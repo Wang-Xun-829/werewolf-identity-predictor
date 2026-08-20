@@ -126,6 +126,39 @@ TARGET_AWARE_ACTIONS = {
 }
 
 
+# ============================================================
+# 策略2：按版型自动调整查验可信度
+# ============================================================
+# 版型名称关键词 → 查验可信度（多种特殊角色取最低值）
+SETUP_RELIABILITY_RULES = [
+    (["混血儿"], 0.90),
+    (["机械狼"], 0.85),
+    (["魔术师"], 0.80),
+    (["梦魇", "狼美人", "白狼王", "狼王"], 0.95),  # 特殊狼不影响查验结果
+]
+DEFAULT_RELIABILITY = 1.0  # 标准版型默认100%可信
+
+
+def get_check_reliability(setup_name):
+    """根据版型名称获取预言家查验可信度（策略2）
+
+    标准版型无特殊角色 = 1.0
+    含混血儿 = 0.9（混血儿可能被链好人，查验好人但底牌狼）
+    含机械狼 = 0.85（机械狼可能学习好人技能）
+    含魔术师 = 0.8（换号导致查验对象不符）
+    多种特殊角色叠加取最低值
+    """
+    if not setup_name:
+        return DEFAULT_RELIABILITY
+    reliability = DEFAULT_RELIABILITY
+    for keywords, rel in SETUP_RELIABILITY_RULES:
+        for kw in keywords:
+            if kw in setup_name:
+                reliability = min(reliability, rel)
+                break
+    return reliability
+
+
 def _get_camp_prob(probabilities, role_camps, camp):
     """计算某阵营的总概率"""
     return sum(p for rid, p in probabilities.items() if role_camps.get(rid) == camp)
@@ -217,23 +250,32 @@ def apply_target_info_correction(player_id, log_probs, behaviors, base_results, 
                     log_probs[rid] += math.log(max(coeff, 0.1))
 
 
-def apply_target_as_target_correction(player_id, log_probs, behaviors_as_target, base_results, role_camps, role_ids):
-    """改进#1（续）：当玩家作为行为目标时，根据发起者的概率修正该玩家的概率
+def apply_target_as_target_correction(player_id, log_probs, behaviors_as_target, base_results, role_camps, role_ids, role_names, check_reliability):
+    """改进#1（方案B）：当玩家作为行为目标时，用条件概率分解修正身份概率
 
-    双向修正的另一半：
-    - 查杀(action=2)：发起者越像预言家 → 目标越像狼人
-    - 发金水(action=3)：发起者越像预言家 → 目标越像好人
-    - 站边(action=10)：站边者越像好人 → 被站边者越像好人
+    核心逻辑（全概率公式）：
+    - 发金水(A→B)：P(B好人) = P(A预言家)×可信度 + P(A非预言家)×基础好人概率
+    - 查杀(A→B)：P(B狼人) = P(A预言家)×可信度 + P(A非预言家)×基础狼人概率
+    - 站边(A→B)：保留相关性修正（站边逻辑蕴涵较弱）
+
+    这样能保证：如果A有80%概率是预言家，B的好人概率至少为80%×可信度
 
     参数:
         player_id: 当前玩家ID（作为目标）
         log_probs: 当前玩家的对数概率 {role_id: log_prob}
         behaviors_as_target: 以该玩家为目标的行为列表
-        base_results: 所有玩家的基础预测结果 {player_id: {"probabilities": {...}}}
-        role_camps: 身份ID→阵营映射 {role_id: camp}
+        base_results: 所有玩家的基础预测结果
+        role_camps: 身份ID→阵营映射
         role_ids: 所有身份ID列表
+        role_names: 身份ID→名称映射（用于查找预言家）
+        check_reliability: 当前版型的查验可信度（策略2）
     """
-    s = TARGET_CORRECTION_STRENGTH
+    # 找到预言家的 role_id
+    seer_role_id = None
+    for rid, name in role_names.items():
+        if name == "预言家":
+            seer_role_id = rid
+            break
 
     for b in behaviors_as_target:
         actor_id = b.get("actor_id")
@@ -252,42 +294,70 @@ def apply_target_as_target_correction(player_id, log_probs, behaviors_as_target,
 
         action_type = TARGET_AWARE_ACTIONS[action_id]
 
-        # 计算发起者各阵营的概率
-        actor_good_prob = _get_camp_prob(actor_probs, role_camps, "好人")
-        actor_wolf_prob = _get_camp_prob(actor_probs, role_camps, "狼人")
+        # 发起者是预言家的概率
+        actor_seer_prob = actor_probs.get(seer_role_id, 0.0) if seer_role_id else 0.0
 
-        if action_type == "check":
-            # 查杀：发起者越像预言家（好人阵营），目标越像狼人
+        # 计算目标当前的好人/狼人概率（从对数概率转换）
+        max_log = max(log_probs.values())
+        current_probs = {}
+        total = 0.0
+        for rid in role_ids:
+            p = math.exp(log_probs[rid] - max_log)
+            current_probs[rid] = p
+            total += p
+        if total > 0:
             for rid in role_ids:
-                camp = role_camps.get(rid)
-                if camp == "狼人":
-                    # 发起者好人概率越高，目标狼人概率越高
-                    coeff = 1.0 + s * (actor_good_prob - 0.5)
-                    log_probs[rid] += math.log(max(coeff, 0.1))
-                elif camp == "好人":
-                    coeff = 1.0 + s * (0.5 - actor_good_prob)
-                    log_probs[rid] += math.log(max(coeff, 0.1))
+                current_probs[rid] /= total
 
-        elif action_type == "golden":
-            # 发金水：发起者越像预言家（好人阵营），目标越像好人
-            for rid in role_ids:
-                camp = role_camps.get(rid)
-                if camp == "好人":
-                    coeff = 1.0 + s * (actor_good_prob - 0.5)
-                    log_probs[rid] += math.log(max(coeff, 0.1))
-                elif camp == "狼人":
-                    coeff = 1.0 + s * (0.5 - actor_good_prob)
-                    log_probs[rid] += math.log(max(coeff, 0.1))
+        target_good_prob = sum(p for rid, p in current_probs.items() if role_camps.get(rid) == "好人")
+        target_wolf_prob = sum(p for rid, p in current_probs.items() if role_camps.get(rid) == "狼人")
+
+        if action_type == "golden":
+            # 发金水：P(B好人) = P(A预言家)×可信度 + P(A非预言家)×基础好人概率
+            new_good_prob = actor_seer_prob * check_reliability + (1 - actor_seer_prob) * target_good_prob
+            new_good_prob = max(0.01, min(0.99, new_good_prob))
+            new_wolf_prob = 1.0 - new_good_prob  # 简化：好人+狼人=1，第三方暂不单独处理
+
+            # 按比例调整好人阵营各身份的对数概率
+            if target_good_prob > 0.001:
+                scale = new_good_prob / target_good_prob
+                for rid in role_ids:
+                    if role_camps.get(rid) == "好人":
+                        log_probs[rid] += math.log(max(scale, 0.01))
+            if target_wolf_prob > 0.001:
+                scale = new_wolf_prob / target_wolf_prob
+                for rid in role_ids:
+                    if role_camps.get(rid) == "狼人":
+                        log_probs[rid] += math.log(max(scale, 0.01))
+
+        elif action_type == "check":
+            # 查杀：P(B狼人) = P(A预言家)×可信度 + P(A非预言家)×基础狼人概率
+            new_wolf_prob = actor_seer_prob * check_reliability + (1 - actor_seer_prob) * target_wolf_prob
+            new_wolf_prob = max(0.01, min(0.99, new_wolf_prob))
+            new_good_prob = 1.0 - new_wolf_prob
+
+            if target_wolf_prob > 0.001:
+                scale = new_wolf_prob / target_wolf_prob
+                for rid in role_ids:
+                    if role_camps.get(rid) == "狼人":
+                        log_probs[rid] += math.log(max(scale, 0.01))
+            if target_good_prob > 0.001:
+                scale = new_good_prob / target_good_prob
+                for rid in role_ids:
+                    if role_camps.get(rid) == "好人":
+                        log_probs[rid] += math.log(max(scale, 0.01))
 
         elif action_type == "side":
-            # 站边：站边者越像好人，被站边者越像好人
+            # 站边：保留相关性修正（站边的逻辑蕴涵较弱，用发起者好人概率做相关性）
+            actor_good_prob = sum(p for rid, p in actor_probs.items() if role_camps.get(rid) == "好人")
+            s = 0.3  # 站边修正强度
             for rid in role_ids:
                 camp = role_camps.get(rid)
                 if camp == "好人":
-                    coeff = 1.0 + s * 0.6 * (actor_good_prob - 0.5)
+                    coeff = 1.0 + s * (actor_good_prob - 0.5)
                     log_probs[rid] += math.log(max(coeff, 0.1))
                 elif camp == "狼人":
-                    coeff = 1.0 + s * 0.6 * (0.5 - actor_good_prob)
+                    coeff = 1.0 + s * (0.5 - actor_good_prob)
                     log_probs[rid] += math.log(max(coeff, 0.1))
 
 
@@ -358,6 +428,16 @@ def predict_game(game_id):
             ...
         }
     """
+    # 1. 获取对局玩家
+    # 获取对局版型信息（用于策略2：按版型自动调整查验可信度）
+    game_info = query_one("SELECT setup_id FROM games WHERE id = " + ph(), (game_id,))
+    setup_name = ""
+    if game_info and game_info.get("setup_id"):
+        setup = query_one("SELECT name FROM setups WHERE id = " + ph(), (game_info["setup_id"],))
+        if setup:
+            setup_name = setup["name"]
+    check_reliability = get_check_reliability(setup_name)
+
     # 1. 获取对局玩家
     game_players = query_all(
         "SELECT gp.*, p.name as player_name FROM game_players gp "
@@ -484,10 +564,10 @@ def predict_game(game_id):
             player_id, log_probs, actor_behaviors, base_results, role_camps, role_ids
         )
 
-        # 改进#1（续）：应用目标信息修正（作为目标）
+        # 改进#1（续）：应用目标信息修正（作为目标）- 方案B条件概率分解
         target_behaviors = behaviors_by_target.get(player_id, [])
         apply_target_as_target_correction(
-            player_id, log_probs, target_behaviors, base_results, role_camps, role_ids
+            player_id, log_probs, target_behaviors, base_results, role_camps, role_ids, role_names, check_reliability
         )
 
         # 转换为概率并归一化（用 log-sum-exp 技巧）
