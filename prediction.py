@@ -217,6 +217,80 @@ def apply_target_info_correction(player_id, log_probs, behaviors, base_results, 
                     log_probs[rid] += math.log(max(coeff, 0.1))
 
 
+def apply_target_as_target_correction(player_id, log_probs, behaviors_as_target, base_results, role_camps, role_ids):
+    """改进#1（续）：当玩家作为行为目标时，根据发起者的概率修正该玩家的概率
+
+    双向修正的另一半：
+    - 查杀(action=2)：发起者越像预言家 → 目标越像狼人
+    - 发金水(action=3)：发起者越像预言家 → 目标越像好人
+    - 站边(action=10)：站边者越像好人 → 被站边者越像好人
+
+    参数:
+        player_id: 当前玩家ID（作为目标）
+        log_probs: 当前玩家的对数概率 {role_id: log_prob}
+        behaviors_as_target: 以该玩家为目标的行为列表
+        base_results: 所有玩家的基础预测结果 {player_id: {"probabilities": {...}}}
+        role_camps: 身份ID→阵营映射 {role_id: camp}
+        role_ids: 所有身份ID列表
+    """
+    s = TARGET_CORRECTION_STRENGTH
+
+    for b in behaviors_as_target:
+        actor_id = b.get("actor_id")
+        action_id = b.get("action_id")
+
+        if not actor_id or action_id not in TARGET_AWARE_ACTIONS:
+            continue
+
+        # 获取发起者的基础预测分布
+        actor_data = base_results.get(actor_id)
+        if not actor_data:
+            continue
+        actor_probs = actor_data.get("probabilities", {})
+        if not actor_probs:
+            continue
+
+        action_type = TARGET_AWARE_ACTIONS[action_id]
+
+        # 计算发起者各阵营的概率
+        actor_good_prob = _get_camp_prob(actor_probs, role_camps, "好人")
+        actor_wolf_prob = _get_camp_prob(actor_probs, role_camps, "狼人")
+
+        if action_type == "check":
+            # 查杀：发起者越像预言家（好人阵营），目标越像狼人
+            for rid in role_ids:
+                camp = role_camps.get(rid)
+                if camp == "狼人":
+                    # 发起者好人概率越高，目标狼人概率越高
+                    coeff = 1.0 + s * (actor_good_prob - 0.5)
+                    log_probs[rid] += math.log(max(coeff, 0.1))
+                elif camp == "好人":
+                    coeff = 1.0 + s * (0.5 - actor_good_prob)
+                    log_probs[rid] += math.log(max(coeff, 0.1))
+
+        elif action_type == "golden":
+            # 发金水：发起者越像预言家（好人阵营），目标越像好人
+            for rid in role_ids:
+                camp = role_camps.get(rid)
+                if camp == "好人":
+                    coeff = 1.0 + s * (actor_good_prob - 0.5)
+                    log_probs[rid] += math.log(max(coeff, 0.1))
+                elif camp == "狼人":
+                    coeff = 1.0 + s * (0.5 - actor_good_prob)
+                    log_probs[rid] += math.log(max(coeff, 0.1))
+
+        elif action_type == "side":
+            # 站边：站边者越像好人，被站边者越像好人
+            for rid in role_ids:
+                camp = role_camps.get(rid)
+                if camp == "好人":
+                    coeff = 1.0 + s * 0.6 * (actor_good_prob - 0.5)
+                    log_probs[rid] += math.log(max(coeff, 0.1))
+                elif camp == "狼人":
+                    coeff = 1.0 + s * 0.6 * (0.5 - actor_good_prob)
+                    log_probs[rid] += math.log(max(coeff, 0.1))
+
+
 # ============================================================
 # 似然度 P(行为|身份)
 # ============================================================
@@ -309,6 +383,15 @@ def predict_game(game_id):
             behaviors_by_actor[actor] = []
         behaviors_by_actor[actor].append(b)
 
+    # 改进#1：按目标分组的行为（用于修正目标玩家的概率）
+    behaviors_by_target = {}
+    for b in behaviors:
+        target = b.get("target_id")
+        if target:
+            if target not in behaviors_by_target:
+                behaviors_by_target[target] = []
+            behaviors_by_target[target].append(b)
+
     # 3. 获取所有启用身份和行为
     all_roles = query_all("SELECT id, name, camp FROM roles WHERE is_active = TRUE")
     role_ids = [r["id"] for r in all_roles]
@@ -395,10 +478,16 @@ def predict_game(game_id):
         # 从基础对数概率开始
         log_probs = dict(base_log_probs[player_id])
 
-        # 应用目标信息修正
+        # 应用目标信息修正（作为发起者）
         actor_behaviors = behaviors_by_actor.get(player_id, [])
         apply_target_info_correction(
             player_id, log_probs, actor_behaviors, base_results, role_camps, role_ids
+        )
+
+        # 改进#1（续）：应用目标信息修正（作为目标）
+        target_behaviors = behaviors_by_target.get(player_id, [])
+        apply_target_as_target_correction(
+            player_id, log_probs, target_behaviors, base_results, role_camps, role_ids
         )
 
         # 转换为概率并归一化（用 log-sum-exp 技巧）
