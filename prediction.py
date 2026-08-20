@@ -139,6 +139,205 @@ SETUP_RELIABILITY_RULES = [
 DEFAULT_RELIABILITY = 1.0  # 标准版型默认100%可信
 
 
+# ============================================================
+# 改进#6：行为组合模式识别（2-gram）
+# ============================================================
+# 预定义有意义的连续两条行为组合
+# 格式: ((前行为ID, 后行为ID), {修正键: 系数})
+# 修正键: "role:ID" 指特定身份, "camp:阵营名" 指整个阵营
+BEHAVIOR_COMBINATIONS = [
+    # === 预言家相关组合 ===
+    # 注意：悍跳狼发查杀/金水取决于战术，不是固定倾向，所以狼人不额外加权
+    ((1, 3), {"role:1": 1.20}),                      # 跳预言家→发金水：真预言家常规操作
+    ((1, 2), {"role:1": 1.15}),                      # 跳预言家→查杀：真预言家常规操作
+    ((1, 10), {"role:1": 1.05}),                      # 跳预言家→站边
+    ((2, 10), {"camp:狼人": 1.10}),                    # 查杀→站边：可能查杀后站边狼队友（弱参考）
+    ((3, 10), {"role:1": 1.05}),                      # 发金水→站边
+
+    # === 神牌相关组合 ===
+    # 注意：狼人可以穿神牌衣服，所以修正系数不宜过高
+    ((4, 15), {"role:2": 1.20}),  # 跳女巫→使用解药：女巫可能，但狼人也可穿衣服
+    ((4, 16), {"role:2": 1.20}),  # 跳女巫→使用毒药
+    ((5, 14), {"role:3": 1.30, "role:8": 1.30}),  # 跳猎人→开枪：猎人/狼王技能，相对可靠
+    ((6, 17), {"role:5": 1.30}),  # 跳守卫→守护：守卫技能，相对可靠
+
+    # === 平民相关组合 ===
+    ((7, 19), {"role:6": 1.10}),  # 认平民→划水
+
+    # === 狼人相关组合 ===
+    ((12, 10), {"camp:狼人": 1.20}),  # 冲锋→站边：狼人给狼队友号票（弱参考）
+    ((11, 10), {"camp:狼人": 1.10}),  # 倒钩→站边：倒钩狼站边真预言家（弱参考，因倒钩狼存在）
+    ((1, 13), {"camp:狼人": 1.50}),    # 跳预言家→自爆：悍跳狼自爆（相对可靠）
+]
+
+
+def apply_combination_correction(player_id, log_probs, actor_behaviors, role_camps, role_ids):
+    """改进#6：应用行为组合模式修正（2-gram）
+
+    检查玩家行为序列中连续两条行为的组合，如果匹配预定义模式，
+    给对应身份/阵营的对数概率加 log(修正系数)。
+
+    参数:
+        player_id: 玩家ID
+        log_probs: 当前玩家的对数概率 {role_id: log_prob}
+        actor_behaviors: 该玩家作为发起者的行为列表（按时间顺序）
+        role_camps: 身份ID→阵营映射
+        role_ids: 所有身份ID列表
+    """
+    if len(actor_behaviors) < 2:
+        return
+
+    for i in range(1, len(actor_behaviors)):
+        prev_action = actor_behaviors[i - 1]["action_id"]
+        curr_action = actor_behaviors[i]["action_id"]
+
+        # 查找匹配的组合模式
+        for pattern, corrections in BEHAVIOR_COMBINATIONS:
+            if pattern[0] == prev_action and pattern[1] == curr_action:
+                for key, coeff in corrections.items():
+                    if key.startswith("role:"):
+                        # 特定身份修正
+                        rid = int(key.split(":")[1])
+                        if rid in role_ids:
+                            log_probs[rid] += math.log(max(coeff, 0.01))
+                    elif key.startswith("camp:"):
+                        # 整个阵营修正
+                        camp = key.split(":")[1]
+                        for rid in role_ids:
+                            if role_camps.get(rid) == camp:
+                                log_probs[rid] += math.log(max(coeff, 0.01))
+                break  # 每个组合只匹配第一个模式
+
+
+# ============================================================
+# 改进#7：玩家关系图建模（简化版标签传播）
+# ============================================================
+RELATIONSHIP_INFLUENCE = 0.1  # 关系图对阵营概率的影响强度（弱参考）
+# 注意：关系传播不可靠，因为倒钩狼会站边真预言家、狼保好人、好人互踩都很常见。
+# 这里仅作为极弱参考，未来应改为"个性化行为倾向"（每个玩家拿不同身份时的行为偏好）。
+
+# 行为类型 → 关系分数（正=同阵营倾向，负=对立阵营倾向）
+RELATIONSHIP_ACTIONS = {
+    10: 1.0,   # 站边：强同阵营
+    3: 0.8,    # 发金水：同阵营（但弱于站边）
+    2: -1.0,   # 查杀：强对立阵营
+    18: -0.5,  # 质疑：弱对立阵营
+}
+
+
+def build_relationship_matrix(behaviors, player_ids):
+    """改进#7：构建玩家关系矩阵（有向图）
+
+    根据行为记录计算每对玩家之间的关系分数：
+    - A站边B → A→B: +1.0（A认为B是同阵营）
+    - A发金水B → A→B: +0.8
+    - A查杀B → A→B: -1.0（A认为B是对立阵营）
+    - A质疑B → A→B: -0.5
+
+    返回: {actor_id: {target_id: 关系分数}}
+    """
+    player_set = set(player_ids)
+    rel = {pid: {} for pid in player_ids}
+
+    for b in behaviors:
+        actor = b["actor_id"]
+        target = b.get("target_id")
+        action_id = b["action_id"]
+
+        if not target or actor not in player_set or target not in player_set:
+            continue
+
+        score = RELATIONSHIP_ACTIONS.get(action_id, 0)
+        if score != 0:
+            rel[actor][target] = rel[actor].get(target, 0) + score
+
+    return rel
+
+
+def apply_relationship_correction(results, rel, role_camps, role_ids, role_names):
+    """改进#7：应用玩家关系图修正（简化版标签传播，单轮迭代）
+
+    每个玩家的阵营概率受其"邻居"的影响：
+    - 邻居好人概率高 + 正关系（站边/发金水）→ 该玩家好人概率提升
+    - 邻居好人概率高 + 负关系（查杀/质疑）→ 该玩家狼人概率提升
+
+    修正公式：
+    邻居影响 = Σ(关系分数 × 邻居好人概率) / Σ(|关系分数|)
+    新好人概率 = 原好人概率 × (1 + 影响强度 × 邻居影响)
+
+    然后按比例调整好人/狼人阵营内各身份的概率。
+    注意：简化假设好人+狼人=1，第三方阵营暂不参与关系传播。
+
+    参数:
+        results: 所有玩家的预测结果 {player_id: {"probabilities": {...}, ...}}
+        rel: 玩家关系矩阵 {actor_id: {target_id: 分数}}
+        role_camps: 身份ID→阵营映射
+        role_ids: 所有身份ID列表
+        role_names: 身份ID→名称映射
+    """
+    # 先计算每个玩家的好人概率
+    good_probs = {}
+    for pid, data in results.items():
+        probs = data["probabilities"]
+        good_prob = sum(p for rid, p in probs.items() if role_camps.get(rid) == "好人")
+        good_probs[pid] = good_prob
+
+    # 对每个玩家应用关系图修正
+    for pid in results:
+        neighbors = rel.get(pid, {})
+        if not neighbors:
+            continue
+
+        # 计算加权邻居影响
+        total_weight = 0.0
+        weighted_good = 0.0
+        for nid, score in neighbors.items():
+            if nid in good_probs:
+                total_weight += abs(score)
+                weighted_good += score * good_probs[nid]
+
+        if total_weight == 0:
+            continue
+
+        # 邻居影响范围 [-1, 1]：正=邻居倾向好人，负=邻居倾向狼人
+        neighbor_influence = weighted_good / total_weight
+
+        # 修正好人概率
+        old_good = good_probs[pid]
+        new_good = old_good * (1 + RELATIONSHIP_INFLUENCE * neighbor_influence)
+        new_good = max(0.01, min(0.99, new_good))
+        new_wolf = 1.0 - new_good  # 简化：好人+狼人=1
+
+        # 按比例调整各身份的概率
+        probs = results[pid]["probabilities"]
+        old_good_total = sum(p for rid, p in probs.items() if role_camps.get(rid) == "好人")
+        old_wolf_total = sum(p for rid, p in probs.items() if role_camps.get(rid) == "狼人")
+
+        if old_good_total > 0.001:
+            scale_good = new_good / old_good_total
+            for rid in role_ids:
+                if role_camps.get(rid) == "好人":
+                    probs[rid] *= scale_good
+
+        if old_wolf_total > 0.001:
+            scale_wolf = new_wolf / old_wolf_total
+            for rid in role_ids:
+                if role_camps.get(rid) == "狼人":
+                    probs[rid] *= scale_wolf
+
+        # 重新归一化
+        total = sum(probs.values())
+        if total > 0:
+            for rid in role_ids:
+                probs[rid] = round(probs[rid] / total, 6)
+
+        # 更新最高概率身份
+        top_role_id = max(probs, key=probs.get) if probs else None
+        results[pid]["top_role_id"] = top_role_id
+        results[pid]["top_role_name"] = role_names.get(top_role_id, "") if top_role_id else ""
+        results[pid]["top_probability"] = round(probs[top_role_id], 6) if top_role_id else 0.0
+
+
 def get_check_reliability(setup_name):
     """根据版型名称获取预言家查验可信度（策略2）
 
@@ -536,6 +735,9 @@ def predict_game(game_id):
                     else:
                         log_probs[rid] += math.log(0.7)       # 不同阵营 ×0.7
 
+        # 改进#6：行为组合模式修正（2-gram）- 在保存基础概率之前应用
+        apply_combination_correction(player_id, log_probs, actor_behaviors, role_camps, role_ids)
+
         # 保存基础对数概率（用于第二阶段修正）
         base_log_probs[player_id] = dict(log_probs)
 
@@ -595,6 +797,10 @@ def predict_game(game_id):
             "top_role_name": role_names.get(top_role_id, ""),
             "top_probability": round(top_probability, 6)
         }
+
+    # 改进#7：玩家关系图修正（标签传播）- 在所有玩家个体预测完成后，全局修正阵营概率
+    rel_matrix = build_relationship_matrix(behaviors, player_ids)
+    apply_relationship_correction(results, rel_matrix, role_camps, role_ids, role_names)
 
     # 8. 保存预测结果到数据库
     save_predictions(game_id, results)
