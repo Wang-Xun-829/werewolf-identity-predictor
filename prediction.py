@@ -21,6 +21,11 @@ import json
 import math
 from db import get_db, DB_TYPE, execute_write, query_all, query_one
 
+# ============================================================
+# 算法超参数（可根据效果调整）
+# ============================================================
+LEARNING_RATE = 0.1  # 改进#3：权重更新学习率，新数据的影响力占比
+
 
 def ph():
     """参数占位符"""
@@ -202,6 +207,7 @@ def predict_game(game_id):
     all_roles = query_all("SELECT id, name, camp FROM roles WHERE is_active = TRUE")
     role_ids = [r["id"] for r in all_roles]
     role_names = {r["id"]: r["name"] for r in all_roles}
+    role_camps = {r["id"]: r["camp"] for r in all_roles}
 
     all_actions = query_all("SELECT id, name, default_weight FROM actions WHERE is_active = TRUE")
     action_defaults = {a["id"]: a.get("default_weight", 1.0) for a in all_actions}
@@ -234,6 +240,27 @@ def predict_game(game_id):
                 # 直接用 weight 作为相对似然度，不按身份归一化
                 w = weight_map.get((action_id, rid), default_w)
                 log_probs[rid] += math.log(max(w, 0.0001))
+
+            # ---- 改进#2：利用"声明身份"信息 ----
+            declared_role_id = b.get("actor_role_id")
+            if declared_role_id and declared_role_id in role_camps:
+                declared_camp = role_camps[declared_role_id]
+                for rid in role_ids:
+                    if rid == declared_role_id:
+                        log_probs[rid] += math.log(2.0)       # 声明的身份 ×2
+                    elif role_camps.get(rid) == declared_camp:
+                        log_probs[rid] += math.log(1.2)       # 同阵营其他身份 ×1.2
+                    else:
+                        log_probs[rid] += math.log(0.5)       # 对立阵营 ×0.5
+
+            # ---- 改进#2：利用"声明阵营"信息 ----
+            declared_camp = b.get("actor_camp")
+            if declared_camp:
+                for rid in role_ids:
+                    if role_camps.get(rid) == declared_camp:
+                        log_probs[rid] += math.log(1.5)       # 同声明阵营 ×1.5
+                    else:
+                        log_probs[rid] += math.log(0.7)       # 不同阵营 ×0.7
 
         # 转换为概率并归一化（用 log-sum-exp 技巧）
         max_log = max(log_probs.values())
@@ -381,7 +408,8 @@ def update_weights_from_game(game_id):
             default_w = default_weights.get(action_id, 1.0)
             weight_record = get_or_create_weight(action_id, actual_role_id, default_w)
 
-            new_weight = weight_record["weight"] + 1
+            # 改进#3：使用学习率更新，新数据始终有固定比例的影响力
+            new_weight = weight_record["weight"] + LEARNING_RATE
             new_sample_count = weight_record["sample_count"] + 1
 
             execute_write(
