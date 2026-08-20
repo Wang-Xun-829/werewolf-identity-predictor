@@ -312,7 +312,8 @@ def execute_write(sql, params=()):
         new_id = row['id'] if isinstance(row, dict) else row[0]
     else:
         cur.execute(sql, params)
-        new_id = cur.lastrowid
+        # psycopg3 可能没有 lastrowid 属性，用 getattr 安全获取
+        new_id = getattr(cur, 'lastrowid', None)
     conn.commit()
     conn.close()
     return new_id
