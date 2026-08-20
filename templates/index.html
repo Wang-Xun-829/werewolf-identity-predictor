@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}对局列表 - 狼人杀身份预测{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-title">
+        <span>对局列表</span>
+        <button class="btn btn-primary" onclick="showCreateGameModal()">+ 新建对局</button>
+    </div>
+    <div id="game-list">
+        <div class="empty-state">
+            <div class="empty-state-icon">🎮</div>
+            <p>加载中...</p>
+        </div>
+    </div>
+</div>
+
+<!-- 新建对局模态框 -->
+<div class="modal-overlay" id="create-game-modal">
+    <div class="modal">
+        <div class="modal-title">新建对局</div>
+        <div class="form-group">
+            <label>对局编号 <span class="required">*</span></label>
+            <input type="text" class="form-control" id="new-game-code" placeholder="例如：20260820-01">
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>版型</label>
+                <select class="form-control" id="new-game-setup">
+                    <option value="">请选择版型</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>玩家数</label>
+                <input type="number" class="form-control" id="new-game-count" placeholder="例如：12" min="3" max="20">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>备注</label>
+            <textarea class="form-control" id="new-game-notes" placeholder="可选"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideCreateGameModal()">取消</button>
+            <button class="btn btn-primary" onclick="createGame()">创建</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/index.js"></script>
+{% endblock %}

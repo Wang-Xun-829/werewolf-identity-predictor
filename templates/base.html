@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}狼人杀身份预测{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">🎭 狼人杀身份预测</div>
+        <div class="nav-links">
+            <a href="/" class="{% if active_page == 'home' %}active{% endif %}">对局列表</a>
+            <a href="/players" class="{% if active_page == 'players' %}active{% endif %}">玩家管理</a>
+            <a href="/admin" class="{% if active_page == 'admin' %}active{% endif %}">库管理</a>
+        </div>
+    </nav>
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    <div id="toast" class="toast"></div>
+    <script src="/static/js/common.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

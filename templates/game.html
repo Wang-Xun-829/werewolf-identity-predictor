@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}对局详情 - 狼人杀身份预测{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-title">
+        <span id="game-header">对局详情</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <span id="game-status" style="font-size:14px;margin-right:8px;"></span>
+            <a href="/" class="btn btn-secondary btn-sm">返回列表</a>
+        </div>
+    </div>
+</div>
+
+<div class="grid grid-sidebar">
+    <!-- 左侧：玩家列表 + 实时预测 -->
+    <div>
+        <div class="card">
+            <div class="card-title">
+                <span>玩家与实时预测</span>
+                <button class="btn btn-primary btn-sm" onclick="showAddPlayerModal()">+ 添加玩家</button>
+            </div>
+            <div id="players-predictions">
+                <div class="empty-state"><p>加载中...</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：行为录入 + 行为记录 -->
+    <div>
+        <div class="card">
+            <div class="card-title">
+                <span>录入行为</span>
+                <button class="btn btn-success btn-sm" onclick="refreshPredictions()">🔄 刷新预测</button>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>行为发起者 <span class="required">*</span></label>
+                    <select class="form-control" id="behavior-actor"></select>
+                </div>
+                <div class="form-group">
+                    <label>行为目标</label>
+                    <select class="form-control" id="behavior-target">
+                        <option value="">无目标</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>具体行为 <span class="required">*</span></label>
+                    <select class="form-control" id="behavior-action"></select>
+                </div>
+                <div class="form-group">
+                    <label>发起者声明身份</label>
+                    <select class="form-control" id="behavior-role">
+                        <option value="">不声明</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>发起者声明阵营</label>
+                    <select class="form-control" id="behavior-camp">
+                        <option value="">不声明</option>
+                        <option value="好人">好人</option>
+                        <option value="狼人">狼人</option>
+                        <option value="第三方">第三方</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>轮次</label>
+                    <input type="number" class="form-control" id="behavior-round" placeholder="第几天" min="1">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>阶段</label>
+                    <select class="form-control" id="behavior-phase">
+                        <option value="">不指定</option>
+                        <option value="黑夜">黑夜</option>
+                        <option value="白天发言">白天发言</option>
+                        <option value="投票">投票</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>备注</label>
+                    <input type="text" class="form-control" id="behavior-notes" placeholder="可选">
+                </div>
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="addBehavior()">➕ 录入行为并刷新预测</button>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                <span>行为记录</span>
+                <span id="behavior-count" style="font-size:12px;color:#999;"></span>
+            </div>
+            <div id="behavior-list" style="max-height:400px;overflow-y:auto;">
+                <div class="empty-state"><p>暂无行为记录</p></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 对局操作栏 -->
+<div class="card">
+    <div class="card-title"><span>对局操作</span></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <button class="btn btn-warning" id="btn-finish" onclick="finishGame()">🏁 结束对局</button>
+        <button class="btn btn-success" id="btn-confirm" onclick="showConfirmModal()" style="display:none;">✅ 确认结果（补全身份后）</button>
+        <button class="btn btn-secondary" onclick="viewScores()">📊 查看预测打分</button>
+    </div>
+    <div id="game-result" style="margin-top:16px;"></div>
+</div>
+
+<!-- 添加玩家模态框 -->
+<div class="modal-overlay" id="add-player-modal">
+    <div class="modal">
+        <div class="modal-title">向对局添加玩家</div>
+        <div class="form-group">
+            <label>选择玩家 <span class="required">*</span></label>
+            <select class="form-control" id="add-player-select"></select>
+        </div>
+        <div class="form-group">
+            <label>座位号</label>
+            <input type="number" class="form-control" id="add-player-seat" placeholder="可选" min="1">
+        </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;">
+            <p style="font-size:13px;color:#666;margin-bottom:8px;">玩家不在列表中？<a href="/players" target="_blank">去玩家管理页添加</a></p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('add-player-modal')">取消</button>
+            <button class="btn btn-primary" onclick="addPlayerToGame()">添加</button>
+        </div>
+    </div>
+</div>
+
+<!-- 确认对局模态框 -->
+<div class="modal-overlay" id="confirm-modal">
+    <div class="modal" style="max-width:600px;">
+        <div class="modal-title">确认对局结果</div>
+        <p style="font-size:13px;color:#666;margin-bottom:16px;">请为每位玩家设置真实身份，确认后系统将自动打分并优化算法。</p>
+        <div id="confirm-roles-list"></div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('confirm-modal')">取消</button>
+            <button class="btn btn-success" onclick="confirmGame()">确认提交</button>
+        </div>
+    </div>
+</div>
+
+<!-- 打分结果模态框 -->
+<div class="modal-overlay" id="scores-modal">
+    <div class="modal" style="max-width:600px;">
+        <div class="modal-title">预测打分明细</div>
+        <div id="scores-content"></div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('scores-modal')">关闭</button>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" id="game-id" value="{{ game_id }}">
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/game.js"></script>
+{% endblock %}

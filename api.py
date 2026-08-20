@@ -1,0 +1,629 @@
+"""
+API 路由模块 - 所有后端接口
+分组：玩家、身份库、行为库、版型库、对局、行为记录、预测
+"""
+from flask import Blueprint, request, jsonify
+from db import DB_TYPE, ph, query_all, query_one, execute_write
+from prediction import predict_game, get_predictions, update_weights_from_game, score_predictions
+
+api = Blueprint('api', __name__, url_prefix='/api')
+
+
+# ============================================================
+# 响应辅助函数
+# ============================================================
+def ok(data=None, message="成功"):
+    """成功响应"""
+    resp = {"success": True, "message": message}
+    if data is not None:
+        resp["data"] = data
+    return jsonify(resp)
+
+
+def fail(message, status=400):
+    """失败响应"""
+    return jsonify({"success": False, "message": message}), status
+
+
+# ============================================================
+# 1. 玩家管理
+# ============================================================
+@api.route('/players', methods=['GET'])
+def list_players():
+    """获取所有玩家"""
+    players = query_all("SELECT * FROM players ORDER BY id")
+    return ok(players)
+
+
+@api.route('/players', methods=['POST'])
+def create_player():
+    """新增玩家"""
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    if not name:
+        return fail("玩家名称不能为空")
+    new_id = execute_write(
+        f"INSERT INTO players (name) VALUES ({ph()})",
+        (name,)
+    )
+    player = query_one("SELECT * FROM players WHERE id = " + ph(), (new_id,))
+    return ok(player, "玩家创建成功")
+
+
+@api.route('/players/<int:player_id>', methods=['PUT'])
+def update_player(player_id):
+    """修改玩家"""
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    if not name:
+        return fail("玩家名称不能为空")
+    execute_write(
+        f"UPDATE players SET name = {ph()} WHERE id = {ph()}",
+        (name, player_id)
+    )
+    player = query_one("SELECT * FROM players WHERE id = " + ph(), (player_id,))
+    if not player:
+        return fail("玩家不存在", 404)
+    return ok(player, "玩家更新成功")
+
+
+@api.route('/players/<int:player_id>', methods=['DELETE'])
+def delete_player(player_id):
+    """删除玩家"""
+    player = query_one("SELECT * FROM players WHERE id = " + ph(), (player_id,))
+    if not player:
+        return fail("玩家不存在", 404)
+    execute_write(f"DELETE FROM players WHERE id = {ph()}", (player_id,))
+    return ok(message="玩家删除成功")
+
+
+# ============================================================
+# 2. 身份库 CRUD
+# ============================================================
+@api.route('/roles', methods=['GET'])
+def list_roles():
+    """获取所有身份"""
+    roles = query_all("SELECT * FROM roles ORDER BY camp, id")
+    return ok(roles)
+
+
+@api.route('/roles', methods=['POST'])
+def create_role():
+    """新增身份"""
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    camp = data.get('camp', '').strip()
+    description = data.get('description', '')
+    if not name or not camp:
+        return fail("身份名称和阵营不能为空")
+    new_id = execute_write(
+        f"INSERT INTO roles (name, camp, description) VALUES ({ph()}, {ph()}, {ph()})",
+        (name, camp, description)
+    )
+    role = query_one("SELECT * FROM roles WHERE id = " + ph(), (new_id,))
+    return ok(role, "身份创建成功")
+
+
+@api.route('/roles/<int:role_id>', methods=['PUT'])
+def update_role(role_id):
+    """修改身份"""
+    data = request.get_json() or {}
+    role = query_one("SELECT * FROM roles WHERE id = " + ph(), (role_id,))
+    if not role:
+        return fail("身份不存在", 404)
+    name = data.get('name', role['name'])
+    camp = data.get('camp', role['camp'])
+    description = data.get('description', role['description'])
+    is_active = data.get('is_active', role['is_active'])
+    execute_write(
+        f"UPDATE roles SET name={ph()}, camp={ph()}, description={ph()}, is_active={ph()} WHERE id={ph()}",
+        (name, camp, description, is_active, role_id)
+    )
+    role = query_one("SELECT * FROM roles WHERE id = " + ph(), (role_id,))
+    return ok(role, "身份更新成功")
+
+
+@api.route('/roles/<int:role_id>', methods=['DELETE'])
+def delete_role(role_id):
+    """删除身份"""
+    role = query_one("SELECT * FROM roles WHERE id = " + ph(), (role_id,))
+    if not role:
+        return fail("身份不存在", 404)
+    execute_write(f"DELETE FROM roles WHERE id = {ph()}", (role_id,))
+    return ok(message="身份删除成功")
+
+
+# ============================================================
+# 3. 行为库 CRUD
+# ============================================================
+@api.route('/actions', methods=['GET'])
+def list_actions():
+    """获取所有行为"""
+    actions = query_all("SELECT * FROM actions ORDER BY id")
+    return ok(actions)
+
+
+@api.route('/actions', methods=['POST'])
+def create_action():
+    """新增行为"""
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    description = data.get('description', '')
+    default_weight = data.get('default_weight', 1.0)
+    if not name:
+        return fail("行为名称不能为空")
+    new_id = execute_write(
+        f"INSERT INTO actions (name, description, default_weight) VALUES ({ph()}, {ph()}, {ph()})",
+        (name, description, default_weight)
+    )
+    action = query_one("SELECT * FROM actions WHERE id = " + ph(), (new_id,))
+    return ok(action, "行为创建成功")
+
+
+@api.route('/actions/<int:action_id>', methods=['PUT'])
+def update_action(action_id):
+    """修改行为"""
+    data = request.get_json() or {}
+    action = query_one("SELECT * FROM actions WHERE id = " + ph(), (action_id,))
+    if not action:
+        return fail("行为不存在", 404)
+    name = data.get('name', action['name'])
+    description = data.get('description', action['description'])
+    default_weight = data.get('default_weight', action['default_weight'])
+    is_active = data.get('is_active', action['is_active'])
+    execute_write(
+        f"UPDATE actions SET name={ph()}, description={ph()}, default_weight={ph()}, is_active={ph()} WHERE id={ph()}",
+        (name, description, default_weight, is_active, action_id)
+    )
+    action = query_one("SELECT * FROM actions WHERE id = " + ph(), (action_id,))
+    return ok(action, "行为更新成功")
+
+
+@api.route('/actions/<int:action_id>', methods=['DELETE'])
+def delete_action(action_id):
+    """删除行为"""
+    action = query_one("SELECT * FROM actions WHERE id = " + ph(), (action_id,))
+    if not action:
+        return fail("行为不存在", 404)
+    execute_write(f"DELETE FROM actions WHERE id = {ph()}", (action_id,))
+    return ok(message="行为删除成功")
+
+
+# ============================================================
+# 4. 版型库 CRUD
+# ============================================================
+@api.route('/setups', methods=['GET'])
+def list_setups():
+    """获取所有版型"""
+    setups = query_all("SELECT * FROM setups ORDER BY id")
+    return ok(setups)
+
+
+@api.route('/setups', methods=['POST'])
+def create_setup():
+    """新增版型"""
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    role_config = data.get('role_config', '{}')
+    description = data.get('description', '')
+    if not name:
+        return fail("版型名称不能为空")
+    new_id = execute_write(
+        f"INSERT INTO setups (name, role_config, description) VALUES ({ph()}, {ph()}, {ph()})",
+        (name, role_config, description)
+    )
+    setup = query_one("SELECT * FROM setups WHERE id = " + ph(), (new_id,))
+    return ok(setup, "版型创建成功")
+
+
+@api.route('/setups/<int:setup_id>', methods=['PUT'])
+def update_setup(setup_id):
+    """修改版型"""
+    data = request.get_json() or {}
+    setup = query_one("SELECT * FROM setups WHERE id = " + ph(), (setup_id,))
+    if not setup:
+        return fail("版型不存在", 404)
+    name = data.get('name', setup['name'])
+    role_config = data.get('role_config', setup['role_config'])
+    description = data.get('description', setup['description'])
+    is_active = data.get('is_active', setup['is_active'])
+    execute_write(
+        f"UPDATE setups SET name={ph()}, role_config={ph()}, description={ph()}, is_active={ph()} WHERE id={ph()}",
+        (name, role_config, description, is_active, setup_id)
+    )
+    setup = query_one("SELECT * FROM setups WHERE id = " + ph(), (setup_id,))
+    return ok(setup, "版型更新成功")
+
+
+@api.route('/setups/<int:setup_id>', methods=['DELETE'])
+def delete_setup(setup_id):
+    """删除版型"""
+    setup = query_one("SELECT * FROM setups WHERE id = " + ph(), (setup_id,))
+    if not setup:
+        return fail("版型不存在", 404)
+    execute_write(f"DELETE FROM setups WHERE id = {ph()}", (setup_id,))
+    return ok(message="版型删除成功")
+
+
+# ============================================================
+# 5. 对局管理
+# ============================================================
+@api.route('/games', methods=['GET'])
+def list_games():
+    """获取所有对局"""
+    games = query_all("""
+        SELECT g.*, s.name as setup_name
+        FROM games g
+        LEFT JOIN setups s ON g.setup_id = s.id
+        ORDER BY g.id DESC
+    """)
+    return ok(games)
+
+
+@api.route('/games', methods=['POST'])
+def create_game():
+    """创建对局"""
+    data = request.get_json() or {}
+    game_code = data.get('game_code', '').strip()
+    setup_id = data.get('setup_id')
+    player_count = data.get('player_count')
+    notes = data.get('notes', '')
+    if not game_code:
+        return fail("对局编号不能为空")
+    new_id = execute_write(
+        f"INSERT INTO games (game_code, setup_id, player_count, notes) VALUES ({ph()}, {ph()}, {ph()}, {ph()})",
+        (game_code, setup_id, player_count, notes)
+    )
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (new_id,))
+    return ok(game, "对局创建成功")
+
+
+@api.route('/games/<int:game_id>', methods=['GET'])
+def get_game(game_id):
+    """获取对局详情（含玩家列表和行为记录）"""
+    game = query_one("""
+        SELECT g.*, s.name as setup_name, s.role_config
+        FROM games g
+        LEFT JOIN setups s ON g.setup_id = s.id
+        WHERE g.id = """ + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    # 对局玩家
+    players = query_all("""
+        SELECT gp.*, p.name as player_name, r.name as actual_role_name, r.camp as actual_camp
+        FROM game_players gp
+        JOIN players p ON gp.player_id = p.id
+        LEFT JOIN roles r ON gp.actual_role_id = r.id
+        WHERE gp.game_id = """ + ph() + " ORDER BY gp.seat_number", (game_id,))
+    # 行为记录
+    behaviors = query_all("""
+        SELECT b.*,
+               pa.name as actor_name,
+               pt.name as target_name,
+               a.name as action_name,
+               r.name as actor_role_name
+        FROM behavior_records b
+        JOIN players pa ON b.actor_id = pa.id
+        LEFT JOIN players pt ON b.target_id = pt.id
+        JOIN actions a ON b.action_id = a.id
+        LEFT JOIN roles r ON b.actor_role_id = r.id
+        WHERE b.game_id = """ + ph() + " ORDER BY b.id", (game_id,))
+    game['players'] = players
+    game['behaviors'] = behaviors
+    return ok(game)
+
+
+@api.route('/games/<int:game_id>', methods=['PUT'])
+def update_game(game_id):
+    """修改对局信息"""
+    data = request.get_json() or {}
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    game_code = data.get('game_code', game['game_code'])
+    setup_id = data.get('setup_id', game['setup_id'])
+    player_count = data.get('player_count', game['player_count'])
+    notes = data.get('notes', game['notes'])
+    status = data.get('status', game['status'])
+    execute_write(
+        f"UPDATE games SET game_code={ph()}, setup_id={ph()}, player_count={ph()}, notes={ph()}, status={ph()} WHERE id={ph()}",
+        (game_code, setup_id, player_count, notes, status, game_id)
+    )
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    return ok(game, "对局更新成功")
+
+
+@api.route('/games/<int:game_id>', methods=['DELETE'])
+def delete_game(game_id):
+    """删除对局（级联删除玩家和行为记录）"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    execute_write(f"DELETE FROM games WHERE id = {ph()}", (game_id,))
+    return ok(message="对局删除成功")
+
+
+# ---- 对局玩家管理 ----
+@api.route('/games/<int:game_id>/players', methods=['POST'])
+def add_game_player(game_id):
+    """向对局添加玩家"""
+    data = request.get_json() or {}
+    player_id = data.get('player_id')
+    seat_number = data.get('seat_number')
+    if not player_id:
+        return fail("玩家ID不能为空")
+    # 检查是否已添加
+    existing = query_one(
+        f"SELECT * FROM game_players WHERE game_id={ph()} AND player_id={ph()}",
+        (game_id, player_id)
+    )
+    if existing:
+        return fail("该玩家已在此对局中")
+    execute_write(
+        f"INSERT INTO game_players (game_id, player_id, seat_number) VALUES ({ph()}, {ph()}, {ph()})",
+        (game_id, player_id, seat_number)
+    )
+    return ok(message="玩家添加成功")
+
+
+@api.route('/games/<int:game_id>/players/<int:player_id>', methods=['DELETE'])
+def remove_game_player(game_id, player_id):
+    """从对局移除玩家"""
+    execute_write(
+        f"DELETE FROM game_players WHERE game_id={ph()} AND player_id={ph()}",
+        (game_id, player_id)
+    )
+    return ok(message="玩家移除成功")
+
+
+@api.route('/games/<int:game_id>/players/<int:player_id>/role', methods=['PUT'])
+def set_player_actual_role(game_id, player_id):
+    """设置玩家真实身份（对局结束确认时用）"""
+    data = request.get_json() or {}
+    actual_role_id = data.get('actual_role_id')
+    if not actual_role_id:
+        return fail("身份ID不能为空")
+    execute_write(
+        f"UPDATE game_players SET actual_role_id={ph()} WHERE game_id={ph()} AND player_id={ph()}",
+        (actual_role_id, game_id, player_id)
+    )
+    return ok(message="真实身份设置成功")
+
+
+# ---- 对局状态流转 ----
+@api.route('/games/<int:game_id>/finish', methods=['POST'])
+def finish_game(game_id):
+    """结束对局"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    execute_write(
+        f"UPDATE games SET status='已结束', finished_at=CURRENT_TIMESTAMP WHERE id={ph()}",
+        (game_id,)
+    )
+    return ok(message="对局已结束")
+
+
+@api.route('/games/<int:game_id>/confirm', methods=['POST'])
+def confirm_game(game_id):
+    """确认对局结果（补全所有玩家真实身份后调用）
+    1. 检查所有玩家是否都设置了真实身份
+    2. 生成最终预测结果
+    3. 对比预测与真实身份进行打分
+    4. 根据真实身份更新算法权重（自我优化）
+    5. 确认所有行为记录，更新对局状态
+    """
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    # 检查所有玩家是否都设置了真实身份
+    players = query_all(
+        "SELECT * FROM game_players WHERE game_id = " + ph(), (game_id,)
+    )
+    no_role = [p for p in players if not p.get('actual_role_id')]
+    if no_role:
+        return fail(f"还有 {len(no_role)} 名玩家未设置真实身份，请先补全")
+    # 生成最终预测
+    predict_game(game_id)
+    # 预测打分
+    score_result = score_predictions(game_id)
+    # 算法自我优化：更新权重
+    updated_count = update_weights_from_game(game_id)
+    # 确认所有行为记录
+    execute_write(
+        f"UPDATE behavior_records SET is_verified=TRUE WHERE game_id={ph()}",
+        (game_id,)
+    )
+    # 更新对局状态
+    execute_write(
+        f"UPDATE games SET status='已确认', confirmed_at=CURRENT_TIMESTAMP WHERE id={ph()}",
+        (game_id,)
+    )
+    return ok({
+        "score": score_result,
+        "weights_updated": updated_count
+    }, "对局结果已确认，预测已打分，算法权重已更新")
+
+
+# ============================================================
+# 6. 行为记录
+# ============================================================
+@api.route('/games/<int:game_id>/behaviors', methods=['GET'])
+def list_behaviors(game_id):
+    """获取某局所有行为记录"""
+    behaviors = query_all("""
+        SELECT b.*,
+               pa.name as actor_name,
+               pt.name as target_name,
+               a.name as action_name,
+               r.name as actor_role_name
+        FROM behavior_records b
+        JOIN players pa ON b.actor_id = pa.id
+        LEFT JOIN players pt ON b.target_id = pt.id
+        JOIN actions a ON b.action_id = a.id
+        LEFT JOIN roles r ON b.actor_role_id = r.id
+        WHERE b.game_id = """ + ph() + " ORDER BY b.id", (game_id,))
+    return ok(behaviors)
+
+
+@api.route('/games/<int:game_id>/behaviors', methods=['POST'])
+def create_behavior(game_id):
+    """新增行为记录（核心功能）
+    必填：actor_id, action_id
+    可空：target_id, actor_role_id, actor_camp, round_number, phase, notes
+    """
+    data = request.get_json() or {}
+    actor_id = data.get('actor_id')
+    action_id = data.get('action_id')
+    target_id = data.get('target_id')
+    actor_role_id = data.get('actor_role_id')
+    actor_camp = data.get('actor_camp')
+    round_number = data.get('round_number')
+    phase = data.get('phase')
+    notes = data.get('notes', '')
+
+    if not actor_id:
+        return fail("行为发起者ID不能为空")
+    if not action_id:
+        return fail("具体行为ID不能为空")
+
+    # 检查对局是否存在
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+
+    new_id = execute_write(
+        f"""INSERT INTO behavior_records
+            (game_id, actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes)
+            VALUES ({ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()})""",
+        (game_id, actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes)
+    )
+    behavior = query_one("SELECT * FROM behavior_records WHERE id = " + ph(), (new_id,))
+    return ok(behavior, "行为记录创建成功")
+
+
+@api.route('/behaviors/<int:behavior_id>', methods=['PUT'])
+def update_behavior(behavior_id):
+    """修改行为记录"""
+    data = request.get_json() or {}
+    behavior = query_one("SELECT * FROM behavior_records WHERE id = " + ph(), (behavior_id,))
+    if not behavior:
+        return fail("行为记录不存在", 404)
+
+    actor_id = data.get('actor_id', behavior['actor_id'])
+    target_id = data.get('target_id', behavior['target_id'])
+    action_id = data.get('action_id', behavior['action_id'])
+    actor_role_id = data.get('actor_role_id', behavior['actor_role_id'])
+    actor_camp = data.get('actor_camp', behavior['actor_camp'])
+    round_number = data.get('round_number', behavior['round_number'])
+    phase = data.get('phase', behavior['phase'])
+    notes = data.get('notes', behavior['notes'])
+
+    execute_write(
+        f"""UPDATE behavior_records
+            SET actor_id={ph()}, target_id={ph()}, action_id={ph()},
+                actor_role_id={ph()}, actor_camp={ph()}, round_number={ph()},
+                phase={ph()}, notes={ph()}
+            WHERE id={ph()}""",
+        (actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes, behavior_id)
+    )
+    behavior = query_one("SELECT * FROM behavior_records WHERE id = " + ph(), (behavior_id,))
+    return ok(behavior, "行为记录更新成功")
+
+
+@api.route('/behaviors/<int:behavior_id>', methods=['DELETE'])
+def delete_behavior(behavior_id):
+    """删除行为记录"""
+    behavior = query_one("SELECT * FROM behavior_records WHERE id = " + ph(), (behavior_id,))
+    if not behavior:
+        return fail("行为记录不存在", 404)
+    execute_write(f"DELETE FROM behavior_records WHERE id = {ph()}", (behavior_id,))
+    return ok(message="行为记录删除成功")
+
+
+# ============================================================
+# 7. 身份预测（贝叶斯算法）
+# ============================================================
+@api.route('/games/<int:game_id>/predictions', methods=['GET'])
+def get_game_predictions(game_id):
+    """获取某局所有玩家的身份概率预测（实时计算）"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    # 实时计算预测
+    results = predict_game(game_id)
+    # 格式化输出
+    output = []
+    for player_id, data in results.items():
+        # 获取身份名称
+        role_names = {}
+        roles = query_all("SELECT id, name, camp FROM roles")
+        for r in roles:
+            role_names[r["id"]] = {"name": r["name"], "camp": r["camp"]}
+        probs = []
+        for rid, prob in sorted(data["probabilities"].items(), key=lambda x: -x[1]):
+            probs.append({
+                "role_id": rid,
+                "role_name": role_names.get(rid, {}).get("name", ""),
+                "camp": role_names.get(rid, {}).get("camp", ""),
+                "probability": prob
+            })
+        output.append({
+            "player_id": player_id,
+            "player_name": data["player_name"],
+            "top_role_id": data["top_role_id"],
+            "top_role_name": data["top_role_name"],
+            "top_probability": data["top_probability"],
+            "all_probabilities": probs
+        })
+    return ok(output, "预测完成")
+
+
+@api.route('/games/<int:game_id>/predictions/refresh', methods=['POST'])
+def refresh_predictions(game_id):
+    """强制重新计算预测（录入新行为后调用）"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    results = predict_game(game_id)
+    return ok({"players_count": len(results)}, "预测已刷新")
+
+
+@api.route('/games/<int:game_id>/scores', methods=['GET'])
+def get_game_scores(game_id):
+    """获取某局的预测打分明细（对局确认后可用）"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    scores = query_all("""
+        SELECT ps.*, p.name as player_name,
+               pr.name as predicted_role_name,
+               ar.name as actual_role_name
+        FROM prediction_scores ps
+        JOIN players p ON ps.player_id = p.id
+        LEFT JOIN roles pr ON ps.predicted_role_id = pr.id
+        LEFT JOIN roles ar ON ps.actual_role_id = ar.id
+        WHERE ps.game_id = """ + ph() + " ORDER BY ps.id", (game_id,))
+    if not scores:
+        return ok([], "暂无打分明细（对局确认后生成）")
+    total = len(scores)
+    correct = sum(1 for s in scores if s.get("is_correct"))
+    return ok({
+        "total_players": total,
+        "correct_count": correct,
+        "accuracy": round(correct / total, 4) if total > 0 else 0,
+        "details": scores
+    }, "打分结果")
+
+
+@api.route('/algorithm/weights', methods=['GET'])
+def list_algorithm_weights():
+    """查看算法权重表（贝叶斯参数）"""
+    weights = query_all("""
+        SELECT aw.*, a.name as action_name, r.name as role_name, r.camp
+        FROM algorithm_weights aw
+        JOIN actions a ON aw.action_id = a.id
+        JOIN roles r ON aw.role_id = r.id
+        ORDER BY r.camp, r.name, a.name
+    """)
+    return ok(weights)

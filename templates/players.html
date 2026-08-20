@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}玩家管理 - 狼人杀身份预测{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-title">
+        <span>玩家管理</span>
+        <button class="btn btn-primary" onclick="showAddPlayerModal()">+ 新增玩家</button>
+    </div>
+    <div id="player-list">
+        <div class="empty-state"><p>加载中...</p></div>
+    </div>
+</div>
+
+<!-- 新增/编辑玩家模态框 -->
+<div class="modal-overlay" id="player-modal">
+    <div class="modal">
+        <div class="modal-title" id="player-modal-title">新增玩家</div>
+        <input type="hidden" id="edit-player-id">
+        <div class="form-group">
+            <label>玩家名称 <span class="required">*</span></label>
+            <input type="text" class="form-control" id="player-name" placeholder="例如：1号玩家">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hidePlayerModal()">取消</button>
+            <button class="btn btn-primary" onclick="savePlayer()">保存</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/players.js"></script>
+{% endblock %}

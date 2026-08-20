@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}库管理 - 狼人杀身份预测{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-title">
+        <span>基础库管理</span>
+        <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary btn-sm" id="tab-roles-btn" onclick="switchTab('roles')">身份库</button>
+            <button class="btn btn-secondary btn-sm" id="tab-actions-btn" onclick="switchTab('actions')">行为库</button>
+            <button class="btn btn-secondary btn-sm" id="tab-setups-btn" onclick="switchTab('setups')">版型库</button>
+        </div>
+    </div>
+
+    <!-- 身份库 -->
+    <div id="tab-roles">
+        <div style="margin-bottom:12px;">
+            <button class="btn btn-primary btn-sm" onclick="showRoleModal()">+ 新增身份</button>
+        </div>
+        <div id="roles-list"></div>
+    </div>
+
+    <!-- 行为库 -->
+    <div id="tab-actions" style="display:none;">
+        <div style="margin-bottom:12px;">
+            <button class="btn btn-primary btn-sm" onclick="showActionModal()">+ 新增行为</button>
+        </div>
+        <div id="actions-list"></div>
+    </div>
+
+    <!-- 版型库 -->
+    <div id="tab-setups" style="display:none;">
+        <div style="margin-bottom:12px;">
+            <button class="btn btn-primary btn-sm" onclick="showSetupModal()">+ 新增版型</button>
+        </div>
+        <div id="setups-list"></div>
+    </div>
+</div>
+
+<!-- 身份模态框 -->
+<div class="modal-overlay" id="role-modal">
+    <div class="modal">
+        <div class="modal-title" id="role-modal-title">新增身份</div>
+        <input type="hidden" id="edit-role-id">
+        <div class="form-group">
+            <label>身份名称 <span class="required">*</span></label>
+            <input type="text" class="form-control" id="role-name" placeholder="例如：预言家">
+        </div>
+        <div class="form-group">
+            <label>阵营 <span class="required">*</span></label>
+            <select class="form-control" id="role-camp">
+                <option value="好人">好人</option>
+                <option value="狼人">狼人</option>
+                <option value="第三方">第三方</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>描述</label>
+            <textarea class="form-control" id="role-desc" placeholder="可选"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('role-modal')">取消</button>
+            <button class="btn btn-primary" onclick="saveRole()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 行为模态框 -->
+<div class="modal-overlay" id="action-modal">
+    <div class="modal">
+        <div class="modal-title" id="action-modal-title">新增行为</div>
+        <input type="hidden" id="edit-action-id">
+        <div class="form-group">
+            <label>行为名称 <span class="required">*</span></label>
+            <input type="text" class="form-control" id="action-name" placeholder="例如：跳预言家">
+        </div>
+        <div class="form-group">
+            <label>默认权重</label>
+            <input type="number" class="form-control" id="action-weight" value="1.0" step="0.1" min="0.1">
+            <small style="color:#999;">权重越高，该行为的信息量越大（贝叶斯先验）</small>
+        </div>
+        <div class="form-group">
+            <label>描述</label>
+            <textarea class="form-control" id="action-desc" placeholder="可选"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('action-modal')">取消</button>
+            <button class="btn btn-primary" onclick="saveAction()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 版型模态框 -->
+<div class="modal-overlay" id="setup-modal">
+    <div class="modal">
+        <div class="modal-title" id="setup-modal-title">新增版型</div>
+        <input type="hidden" id="edit-setup-id">
+        <div class="form-group">
+            <label>版型名称 <span class="required">*</span></label>
+            <input type="text" class="form-control" id="setup-name" placeholder="例如：预女猎白">
+        </div>
+        <div class="form-group">
+            <label>身份配置 (JSON) <span class="required">*</span></label>
+            <textarea class="form-control" id="setup-config" style="font-family:monospace;" placeholder='{"狼人":4,"预言家":1,"女巫":1,"猎人":1,"白痴":1,"平民":4}'></textarea>
+            <small style="color:#999;">JSON格式，键为身份名称，值为数量</small>
+        </div>
+        <div class="form-group">
+            <label>描述</label>
+            <textarea class="form-control" id="setup-desc" placeholder="可选"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('setup-modal')">取消</button>
+            <button class="btn btn-primary" onclick="saveSetup()">保存</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/admin.js"></script>
+{% endblock %}
