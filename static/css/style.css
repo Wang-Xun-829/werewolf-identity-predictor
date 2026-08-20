@@ -284,6 +284,49 @@ textarea.form-control { resize: vertical; min-height: 60px; }
 .status-finished { color: #f59e0b; font-weight: 500; }
 .status-confirmed { color: #4a6cf7; font-weight: 500; }
 
+/* 自动补全搜索框 */
+.autocomplete { position: relative; }
+.autocomplete-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 50;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.autocomplete-dropdown.show { display: block; }
+.autocomplete-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background 0.15s;
+}
+.autocomplete-item:last-child { border-bottom: none; }
+.autocomplete-item:hover, .autocomplete-item.active {
+    background: #eff6ff;
+    color: #4a6cf7;
+}
+.autocomplete-item .item-desc {
+    font-size: 12px;
+    color: #999;
+    margin-top: 2px;
+}
+.autocomplete-empty {
+    padding: 12px;
+    text-align: center;
+    color: #999;
+    font-size: 13px;
+}
+.autocomplete input.form-control { border-bottom-right-radius: 0; border-bottom-left-radius: 0; }
+
 /* 响应式 */
 @media (max-width: 768px) {
     .grid-2, .grid-3, .grid-sidebar { grid-template-columns: 1fr; }

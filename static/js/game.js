@@ -21,7 +21,11 @@ async function loadAllPlayers() {
 
 async function loadAllActions() {
     const result = await api('GET', '/actions');
-    if (result) allActions = result.data;
+    if (result) {
+        allActions = result.data;
+        // 按名称字母排序（支持中文拼音排序）
+        allActions.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    }
 }
 
 async function loadAllRoles() {
@@ -68,10 +72,8 @@ function populateSelects() {
         targetSelect.innerHTML += `<option value="${gp.player_id}">${seat}${escapeHtml(gp.player_name)}</option>`;
     });
 
-    actionSelect.innerHTML = '<option value="">请选择行为</option>';
-    allActions.forEach(a => {
-        actionSelect.innerHTML += `<option value="${a.id}">${escapeHtml(a.name)}</option>`;
-    });
+    // 行为选择使用 autocomplete 搜索框（不再用 select）
+    initActionAutocomplete();
 
     roleSelect.innerHTML = '<option value="">不声明</option>';
     allRoles.forEach(r => {
@@ -176,6 +178,8 @@ async function addBehavior() {
         showToast('行为已录入', 'success');
         // 清空表单部分字段
         document.getElementById('behavior-notes').value = '';
+        document.getElementById('behavior-action-input').value = '';
+        document.getElementById('behavior-action').value = '';
         // 重新加载
         await loadGame();
     }
@@ -309,4 +313,114 @@ async function viewScores() {
 
 function hideModal(id) {
     document.getElementById(id).classList.remove('show');
+}
+
+// ============================================================
+// 行为搜索自动补全（Autocomplete）
+// ============================================================
+let actionAutocompleteState = {
+    selectedIndex: -1,
+    filteredActions: []
+};
+
+function initActionAutocomplete() {
+    const input = document.getElementById('behavior-action-input');
+    const dropdown = document.getElementById('action-dropdown');
+    if (!input || !dropdown) return;
+
+    // 聚焦时显示所有行为（按字母排序）
+    input.addEventListener('focus', () => {
+        renderActionDropdown('');
+        dropdown.classList.add('show');
+    });
+
+    // 输入时实时过滤
+    input.addEventListener('input', (e) => {
+        const keyword = e.target.value.trim().toLowerCase();
+        renderActionDropdown(keyword);
+        dropdown.classList.add('show');
+        // 用户重新输入时清空已选中的隐藏值
+        document.getElementById('behavior-action').value = '';
+    });
+
+    // 键盘导航（上下箭头选择、回车确认、ESC关闭）
+    input.addEventListener('keydown', (e) => {
+        const items = dropdown.querySelectorAll('.autocomplete-item');
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            actionAutocompleteState.selectedIndex = Math.min(
+                actionAutocompleteState.selectedIndex + 1,
+                items.length - 1
+            );
+            updateActiveItem(items);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            actionAutocompleteState.selectedIndex = Math.max(
+                actionAutocompleteState.selectedIndex - 1,
+                0
+            );
+            updateActiveItem(items);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (actionAutocompleteState.selectedIndex >= 0 && items[actionAutocompleteState.selectedIndex]) {
+                items[actionAutocompleteState.selectedIndex].click();
+            }
+        } else if (e.key === 'Escape') {
+            dropdown.classList.remove('show');
+        }
+    });
+
+    // 点击输入框外部时关闭下拉
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#action-autocomplete')) {
+            dropdown.classList.remove('show');
+        }
+    });
+}
+
+function renderActionDropdown(keyword) {
+    const dropdown = document.getElementById('action-dropdown');
+    // 过滤：匹配行为名称或描述
+    const filtered = keyword
+        ? allActions.filter(a =>
+            a.name.toLowerCase().includes(keyword) ||
+            (a.description && a.description.toLowerCase().includes(keyword))
+        )
+        : allActions;
+
+    actionAutocompleteState.filteredActions = filtered;
+    actionAutocompleteState.selectedIndex = -1;
+
+    if (filtered.length === 0) {
+        dropdown.innerHTML = '<div class="autocomplete-empty">未找到匹配的行为，可去库管理页新增</div>';
+        return;
+    }
+
+    let html = '';
+    filtered.forEach((a, index) => {
+        html += `<div class="autocomplete-item" data-id="${a.id}" 
+            onclick="selectAction(${a.id}, ${JSON.stringify(a.name)}, ${index})">
+            <strong>${escapeHtml(a.name)}</strong>
+            ${a.description ? `<div class="item-desc">${escapeHtml(a.description)}</div>` : ''}
+        </div>`;
+    });
+    dropdown.innerHTML = html;
+}
+
+function selectAction(id, name, index) {
+    document.getElementById('behavior-action').value = id;
+    document.getElementById('behavior-action-input').value = name;
+    document.getElementById('action-dropdown').classList.remove('show');
+    actionAutocompleteState.selectedIndex = index;
+}
+
+function updateActiveItem(items) {
+    items.forEach((item, i) => {
+        item.classList.toggle('active', i === actionAutocompleteState.selectedIndex);
+    });
+    // 自动滚动到选中项
+    const active = items[actionAutocompleteState.selectedIndex];
+    if (active) {
+        active.scrollIntoView({ block: 'nearest' });
+    }
 }
