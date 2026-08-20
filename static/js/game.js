@@ -376,6 +376,16 @@ function initActionAutocomplete() {
             dropdown.classList.remove('show');
         }
     });
+
+    // 事件委托：点击下拉项时选中（避免内联onclick的引号冲突）
+    dropdown.addEventListener('click', (e) => {
+        const item = e.target.closest('.autocomplete-item');
+        if (!item) return;
+        const id = parseInt(item.dataset.id);
+        const name = item.dataset.name;
+        const index = parseInt(item.dataset.index);
+        selectAction(id, name, index);
+    });
 }
 
 function renderActionDropdown(keyword) {
@@ -398,8 +408,7 @@ function renderActionDropdown(keyword) {
 
     let html = '';
     filtered.forEach((a, index) => {
-        html += `<div class="autocomplete-item" data-id="${a.id}" 
-            onclick="selectAction(${a.id}, ${JSON.stringify(a.name)}, ${index})">
+        html += `<div class="autocomplete-item" data-id="${a.id}" data-name="${escapeHtml(a.name)}" data-index="${index}">
             <strong>${escapeHtml(a.name)}</strong>
             ${a.description ? `<div class="item-desc">${escapeHtml(a.description)}</div>` : ''}
         </div>`;
