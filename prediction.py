@@ -112,6 +112,112 @@ def calculate_prior(game_id):
 
 
 # ============================================================
+# 改进#1：利用行为目标信息修正预测
+# ============================================================
+# 目标信息修正强度系数（越大修正越明显）
+TARGET_CORRECTION_STRENGTH = 0.5
+
+# 需要利用目标信息的行为ID及修正逻辑
+# 规则：根据目标的身份概率分布，给发起者的对应身份乘修正系数
+TARGET_AWARE_ACTIONS = {
+    2: "check",    # 查杀
+    3: "golden",   # 发金水
+    10: "side",    # 站边
+}
+
+
+def _get_camp_prob(probabilities, role_camps, camp):
+    """计算某阵营的总概率"""
+    return sum(p for rid, p in probabilities.items() if role_camps.get(rid) == camp)
+
+
+def apply_target_info_correction(player_id, log_probs, behaviors, base_results, role_camps, role_ids):
+    """改进#1：利用行为目标信息修正发起者的对数概率
+
+    对每条有 target_id 的行为，根据目标的基础预测分布，修正发起者的概率：
+    - 查杀(action=2)：目标狼人概率高 → 发起者预言家概率提升；目标好人概率高 → 发起者狼人概率提升
+    - 发金水(action=3)：目标好人概率高 → 发起者预言家概率提升；目标狼人概率高 → 发起者狼人概率提升
+    - 站边(action=10)：目标预言家概率高 → 发起者好人阵营概率提升；目标狼人概率高 → 发起者狼人阵营概率提升
+
+    参数:
+        player_id: 当前玩家ID
+        log_probs: 当前玩家的对数概率 {role_id: log_prob}
+        behaviors: 当前玩家作为发起者的行为列表
+        base_results: 所有玩家的基础预测结果 {player_id: {"probabilities": {...}}}
+        role_camps: 身份ID→阵营映射 {role_id: camp}
+        role_ids: 所有身份ID列表
+    """
+    s = TARGET_CORRECTION_STRENGTH
+
+    for b in behaviors:
+        target_id = b.get("target_id")
+        action_id = b.get("action_id")
+
+        # 只处理有目标且在目标感知行为列表中的行为
+        if not target_id or action_id not in TARGET_AWARE_ACTIONS:
+            continue
+
+        # 获取目标的基础预测分布
+        target_data = base_results.get(target_id)
+        if not target_data:
+            continue
+        target_probs = target_data.get("probabilities", {})
+        if not target_probs:
+            continue
+
+        action_type = TARGET_AWARE_ACTIONS[action_id]
+
+        # 计算目标各阵营/身份的概率
+        target_wolf_prob = _get_camp_prob(target_probs, role_camps, "狼人")
+        target_good_prob = _get_camp_prob(target_probs, role_camps, "好人")
+        target_seer_prob = 0.0
+        for rid, p in target_probs.items():
+            if role_camps.get(rid) == "好人" and rid in role_ids:
+                # 找预言家身份（名称匹配）
+                pass
+        # 直接从概率分布中找预言家（id=1，因为初始数据中预言家是第一个）
+        # 更稳健的方式：遍历所有身份，找名称为"预言家"的
+        # 这里用一个简单的近似：好人阵营中概率最高的身份作为"预言家候选"
+        # 实际上应该传 role_names 进来，但为了简化，我们用阵营概率来近似
+
+        if action_type == "check":
+            # 查杀：目标越像狼人，发起者越像预言家；目标越像好人，发起者越像狼人
+            for rid in role_ids:
+                camp = role_camps.get(rid)
+                if camp == "好人":
+                    # 好人阵营：目标狼人概率越高，预言家类身份越可能
+                    # 简化：所有好人身份都乘 (1 + s*(target_wolf_prob - 0.3))
+                    coeff = 1.0 + s * (target_wolf_prob - 0.3)
+                    log_probs[rid] += math.log(max(coeff, 0.1))
+                elif camp == "狼人":
+                    # 狼人阵营：目标好人概率越高，悍跳狼越可能
+                    coeff = 1.0 + s * (target_good_prob - 0.7)
+                    log_probs[rid] += math.log(max(coeff, 0.1))
+
+        elif action_type == "golden":
+            # 发金水：目标越像好人，发起者越像预言家；目标越像狼人，发起者越像狼人
+            for rid in role_ids:
+                camp = role_camps.get(rid)
+                if camp == "好人":
+                    coeff = 1.0 + s * (target_good_prob - 0.7)
+                    log_probs[rid] += math.log(max(coeff, 0.1))
+                elif camp == "狼人":
+                    coeff = 1.0 + s * (target_wolf_prob - 0.3)
+                    log_probs[rid] += math.log(max(coeff, 0.1))
+
+        elif action_type == "side":
+            # 站边：目标越像预言家（好人），站边者越像好人；目标越像狼人，站边者越像狼人
+            for rid in role_ids:
+                camp = role_camps.get(rid)
+                if camp == "好人":
+                    coeff = 1.0 + s * 0.6 * (target_good_prob - 0.7)
+                    log_probs[rid] += math.log(max(coeff, 0.1))
+                elif camp == "狼人":
+                    coeff = 1.0 + s * 0.6 * (target_wolf_prob - 0.3)
+                    log_probs[rid] += math.log(max(coeff, 0.1))
+
+
+# ============================================================
 # 似然度 P(行为|身份)
 # ============================================================
 def calculate_likelihood_table(weights, actions, role_ids):
@@ -215,16 +321,21 @@ def predict_game(game_id):
     if not role_ids or not all_actions:
         return {}
 
-    # 4. 计算先验
-    prior = calculate_prior(game_id)
+    # 4. 计算版型先验（作为基础先验）
+    setup_prior = calculate_prior(game_id)
 
     # 5. 获取算法权重 {(action_id, role_id): weight}
     weights = get_all_weights()
     weight_map = {k: v["weight"] for k, v in weights.items()}
 
-    # 6. 对每个玩家计算后验
-    results = {}
+    # 6. 第一阶段：计算所有玩家的基础预测（不考虑目标信息）
+    base_log_probs = {}  # 保存每个玩家的基础对数概率，用于第二阶段修正
+    base_results = {}    # 保存每个玩家的基础概率分布，用于目标信息修正
+
     for player_id in player_ids:
+        # 使用版型先验（身份是随机分配的，所有玩家先验一致）
+        prior = setup_prior
+
         # 从先验开始（对数概率）
         log_probs = {}
         for rid in role_ids:
@@ -262,6 +373,34 @@ def predict_game(game_id):
                     else:
                         log_probs[rid] += math.log(0.7)       # 不同阵营 ×0.7
 
+        # 保存基础对数概率（用于第二阶段修正）
+        base_log_probs[player_id] = dict(log_probs)
+
+        # 归一化得到基础概率分布（用于目标信息修正时查询目标的概率）
+        max_log = max(log_probs.values())
+        base_probs = {}
+        total = 0.0
+        for rid in role_ids:
+            p = math.exp(log_probs[rid] - max_log)
+            base_probs[rid] = p
+            total += p
+        if total > 0:
+            for rid in role_ids:
+                base_probs[rid] = round(base_probs[rid] / total, 6)
+        base_results[player_id] = {"probabilities": base_probs}
+
+    # 7. 第二阶段：改进#1 - 利用行为目标信息修正预测
+    results = {}
+    for player_id in player_ids:
+        # 从基础对数概率开始
+        log_probs = dict(base_log_probs[player_id])
+
+        # 应用目标信息修正
+        actor_behaviors = behaviors_by_actor.get(player_id, [])
+        apply_target_info_correction(
+            player_id, log_probs, actor_behaviors, base_results, role_camps, role_ids
+        )
+
         # 转换为概率并归一化（用 log-sum-exp 技巧）
         max_log = max(log_probs.values())
         probs = {}
@@ -288,7 +427,7 @@ def predict_game(game_id):
             "top_probability": round(top_probability, 6)
         }
 
-    # 7. 保存预测结果到数据库
+    # 8. 保存预测结果到数据库
     save_predictions(game_id, results)
 
     return results
