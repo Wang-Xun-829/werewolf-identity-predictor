@@ -125,10 +125,27 @@ def update_role(role_id):
 
 @api.route('/roles/<int:role_id>', methods=['DELETE'])
 def delete_role(role_id):
-    """删除身份"""
+    """删除身份（先清理外键引用）"""
     role = query_one("SELECT * FROM roles WHERE id = " + ph(), (role_id,))
     if not role:
         return fail("身份不存在", 404)
+    # 检查是否有对局玩家使用了该身份作为真实身份
+    used_players = query_one(
+        "SELECT COUNT(*) as cnt FROM game_players WHERE actual_role_id = " + ph(),
+        (role_id,)
+    )
+    if used_players and used_players["cnt"] > 0:
+        return fail(f"该身份已有 {used_players['cnt']} 名对局玩家使用，无法删除。")
+    # 检查是否有行为记录声明了该身份
+    used_behaviors = query_one(
+        "SELECT COUNT(*) as cnt FROM behavior_records WHERE actor_role_id = " + ph(),
+        (role_id,)
+    )
+    if used_behaviors and used_behaviors["cnt"] > 0:
+        return fail(f"该身份已有 {used_behaviors['cnt']} 条行为记录声明，无法删除。")
+    # 删除算法权重表中引用该身份的记录
+    execute_write(f"DELETE FROM algorithm_weights WHERE role_id = {ph()}", (role_id,))
+    # 删除身份本身
     execute_write(f"DELETE FROM roles WHERE id = {ph()}", (role_id,))
     return ok(message="身份删除成功")
 
@@ -181,10 +198,20 @@ def update_action(action_id):
 
 @api.route('/actions/<int:action_id>', methods=['DELETE'])
 def delete_action(action_id):
-    """删除行为"""
+    """删除行为（先清理外键引用）"""
     action = query_one("SELECT * FROM actions WHERE id = " + ph(), (action_id,))
     if not action:
         return fail("行为不存在", 404)
+    # 检查是否有行为记录使用了该行为
+    used = query_one(
+        "SELECT COUNT(*) as cnt FROM behavior_records WHERE action_id = " + ph(),
+        (action_id,)
+    )
+    if used and used["cnt"] > 0:
+        return fail(f"该行为已有 {used['cnt']} 条行为记录使用，无法删除。请先删除相关行为记录。")
+    # 删除算法权重表中引用该行为的记录
+    execute_write(f"DELETE FROM algorithm_weights WHERE action_id = {ph()}", (action_id,))
+    # 删除行为本身
     execute_write(f"DELETE FROM actions WHERE id = {ph()}", (action_id,))
     return ok(message="行为删除成功")
 
@@ -237,10 +264,18 @@ def update_setup(setup_id):
 
 @api.route('/setups/<int:setup_id>', methods=['DELETE'])
 def delete_setup(setup_id):
-    """删除版型"""
+    """删除版型（先检查外键引用）"""
     setup = query_one("SELECT * FROM setups WHERE id = " + ph(), (setup_id,))
     if not setup:
         return fail("版型不存在", 404)
+    # 检查是否有对局使用了该版型
+    used = query_one(
+        "SELECT COUNT(*) as cnt FROM games WHERE setup_id = " + ph(),
+        (setup_id,)
+    )
+    if used and used["cnt"] > 0:
+        return fail(f"该版型已有 {used['cnt']} 局对局使用，无法删除。请先删除相关对局。")
+    # 删除版型本身
     execute_write(f"DELETE FROM setups WHERE id = {ph()}", (setup_id,))
     return ok(message="版型删除成功")
 
