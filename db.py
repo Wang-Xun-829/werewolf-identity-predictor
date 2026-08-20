@@ -307,7 +307,9 @@ def execute_write(sql, params=()):
         if 'RETURNING' not in sql.upper():
             sql = sql.rstrip().rstrip(';') + ' RETURNING id'
         cur.execute(sql, params)
-        new_id = cur.fetchone()[0]
+        row = cur.fetchone()
+        # psycopg3 dict_row 返回字典，用 ['id']；兼容元组情况
+        new_id = row['id'] if isinstance(row, dict) else row[0]
     else:
         cur.execute(sql, params)
         new_id = cur.lastrowid
