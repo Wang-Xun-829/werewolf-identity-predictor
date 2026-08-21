@@ -26,6 +26,13 @@ from db import get_db, DB_TYPE, execute_write, query_all, query_one
 # ============================================================
 LEARNING_RATE = 0.1  # 改进#3：权重更新学习率，新数据的影响力占比
 
+# ============================================================
+# 改进#第四阶段：个性化似然度（每个玩家的行为倾向）
+# ============================================================
+MIN_PERSONALIZED_SAMPLES = 5   # 玩家最少需要多少局已确认对局才使用个性化修正
+PERSONALIZED_FACTOR_MIN = 0.5  # 个性化修正系数下限（避免极端值）
+PERSONALIZED_FACTOR_MAX = 2.0  # 个性化修正系数上限（避免极端值）
+
 
 def ph():
     """参数占位符"""
@@ -601,6 +608,134 @@ def calculate_likelihood_table(weights, actions, role_ids):
 
 
 # ============================================================
+# 改进#第四阶段：个性化似然度（每个玩家的行为倾向）
+# ============================================================
+def build_personalized_stats():
+    """构建个性化行为统计（基于所有已确认对局）
+
+    统计：
+    1. 每个玩家拿每个身份时，各行为的出现频率
+    2. 全局平均：所有玩家拿每个身份时，各行为的出现频率
+
+    返回:
+        personalized_stats: {player_id: {role_id: {action_id: frequency}}}
+        global_stats: {role_id: {action_id: frequency}}
+        player_game_counts: {player_id: {role_id: game_count}}
+    """
+    # 1. 查询每个玩家拿每个身份的总局数（已确认对局）
+    player_game_counts = {}
+    game_count_rows = query_all("""
+        SELECT gp.player_id, gp.actual_role_id, COUNT(DISTINCT gp.game_id) as game_count
+        FROM game_players gp
+        JOIN games g ON gp.game_id = g.id
+        WHERE g.status = 'confirmed' AND gp.actual_role_id IS NOT NULL
+        GROUP BY gp.player_id, gp.actual_role_id
+    """)
+    for row in game_count_rows:
+        pid = row["player_id"]
+        rid = row["actual_role_id"]
+        if pid not in player_game_counts:
+            player_game_counts[pid] = {}
+        player_game_counts[pid][rid] = row["game_count"]
+
+    # 2. 查询每个玩家拿每个身份时，各行为的出现次数
+    personalized_counts = {}  # {player_id: {role_id: {action_id: count}}}
+    behavior_rows = query_all("""
+        SELECT gp.player_id, gp.actual_role_id, b.action_id, COUNT(*) as cnt
+        FROM game_players gp
+        JOIN games g ON gp.game_id = g.id
+        JOIN behavior_records b ON gp.game_id = b.game_id AND gp.player_id = b.actor_id
+        WHERE g.status = 'confirmed' AND gp.actual_role_id IS NOT NULL
+        GROUP BY gp.player_id, gp.actual_role_id, b.action_id
+    """)
+    for row in behavior_rows:
+        pid = row["player_id"]
+        rid = row["actual_role_id"]
+        aid = row["action_id"]
+        if pid not in personalized_counts:
+            personalized_counts[pid] = {}
+        if rid not in personalized_counts[pid]:
+            personalized_counts[pid][rid] = {}
+        personalized_counts[pid][rid][aid] = row["cnt"]
+
+    # 3. 计算每个玩家的个性化频率
+    personalized_stats = {}
+    for pid, role_counts in personalized_counts.items():
+        personalized_stats[pid] = {}
+        for rid, action_counts in role_counts.items():
+            game_count = player_game_counts.get(pid, {}).get(rid, 0)
+            if game_count > 0:
+                personalized_stats[pid][rid] = {
+                    aid: cnt / game_count for aid, cnt in action_counts.items()
+                }
+
+    # 4. 计算全局平均频率（所有玩家拿每个身份时各行为的平均频率）
+    global_action_counts = {}  # {role_id: {action_id: total_count}}
+    global_game_counts = {}    # {role_id: total_game_count}
+    for pid, role_counts in personalized_counts.items():
+        for rid, action_counts in role_counts.items():
+            if rid not in global_action_counts:
+                global_action_counts[rid] = {}
+            for aid, cnt in action_counts.items():
+                global_action_counts[rid][aid] = global_action_counts[rid].get(aid, 0) + cnt
+
+    for pid, role_games in player_game_counts.items():
+        for rid, gc in role_games.items():
+            global_game_counts[rid] = global_game_counts.get(rid, 0) + gc
+
+    global_stats = {}
+    for rid, action_counts in global_action_counts.items():
+        total_games = global_game_counts.get(rid, 0)
+        if total_games > 0:
+            global_stats[rid] = {
+                aid: cnt / total_games for aid, cnt in action_counts.items()
+            }
+
+    return personalized_stats, global_stats, player_game_counts
+
+
+def get_personalized_factor(player_id, role_id, action_id,
+                             personalized_stats, global_stats, player_game_counts):
+    """获取个性化修正系数
+
+    系数 = 玩家P拿身份R时做行为A的频率 / 全局平均频率
+    - 系数 > 1：该玩家拿这个身份时更倾向于做这个行为
+    - 系数 < 1：该玩家拿这个身份时更少做这个行为
+    - 系数 = 1：无个性化修正（数据不足或全局频率为0）
+
+    参数:
+        player_id: 玩家ID
+        role_id: 身份ID
+        action_id: 行为ID
+        personalized_stats: 个性化频率统计
+        global_stats: 全局平均频率统计
+        player_game_counts: 玩家对局数统计
+
+    返回:
+        个性化修正系数（限制在 [MIN, MAX] 范围内）
+    """
+    # 检查数据是否足够（该玩家拿该身份的对局数 >= 阈值）
+    game_count = player_game_counts.get(player_id, {}).get(role_id, 0)
+    if game_count < MIN_PERSONALIZED_SAMPLES:
+        return 1.0  # 数据不足，不使用个性化修正
+
+    # 获取玩家频率和全局平均频率
+    player_freq = personalized_stats.get(player_id, {}).get(role_id, {}).get(action_id, 0)
+    global_freq = global_stats.get(role_id, {}).get(action_id, 0)
+
+    if global_freq == 0:
+        return 1.0  # 全局频率为0，无法计算相对系数
+
+    # 计算相对系数
+    factor = player_freq / global_freq
+
+    # 限制范围，避免极端值
+    factor = max(PERSONALIZED_FACTOR_MIN, min(PERSONALIZED_FACTOR_MAX, factor))
+
+    return factor
+
+
+# ============================================================
 # 主预测函数
 # ============================================================
 def predict_game(game_id):
@@ -662,6 +797,9 @@ def predict_game(game_id):
             behaviors_by_actor[actor] = []
         behaviors_by_actor[actor].append(b)
 
+    # 改进#第四阶段：构建个性化行为统计（基于所有已确认对局）
+    personalized_stats, global_stats, player_game_counts = build_personalized_stats()
+
     # 改进#1：按目标分组的行为（用于修正目标玩家的概率）
     behaviors_by_target = {}
     for b in behaviors:
@@ -713,6 +851,15 @@ def predict_game(game_id):
                 # 直接用 weight 作为相对似然度，不按身份归一化
                 w = weight_map.get((action_id, rid), default_w)
                 log_probs[rid] += math.log(max(w, 0.0001))
+
+                # 改进#第四阶段：个性化似然度修正
+                # 根据该玩家历史对局中拿不同身份时的行为倾向，调整似然度
+                personalized_factor = get_personalized_factor(
+                    player_id, rid, action_id,
+                    personalized_stats, global_stats, player_game_counts
+                )
+                if personalized_factor != 1.0:
+                    log_probs[rid] += math.log(max(personalized_factor, 0.0001))
 
             # ---- 改进#2：利用"声明身份"信息 ----
             declared_role_id = b.get("actor_role_id")
