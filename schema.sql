@@ -122,6 +122,19 @@ CREATE TABLE IF NOT EXISTS prediction_scores (
     scored_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 11. 玩家个性化行为统计表（持久化存储，用于个性化似然度）
+-- 记录每个玩家拿每个身份时，各行为的出现次数和总局数
+CREATE TABLE IF NOT EXISTS player_behavior_stats (
+    id          SERIAL PRIMARY KEY,
+    player_id   INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    role_id     INTEGER NOT NULL REFERENCES roles(id),
+    action_id   INTEGER NOT NULL REFERENCES actions(id),
+    count       INTEGER DEFAULT 0,   -- 该玩家拿该身份时做该行为的次数
+    game_count  INTEGER DEFAULT 0,   -- 该玩家拿该身份的总局数（同一玩家同一身份只存一份）
+    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(player_id, role_id, action_id)
+);
+
 -- ============================================================
 -- 索引（提升查询性能）
 -- ============================================================

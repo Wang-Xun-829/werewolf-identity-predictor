@@ -611,87 +611,151 @@ def calculate_likelihood_table(weights, actions, role_ids):
 # 改进#第四阶段：个性化似然度（每个玩家的行为倾向）
 # ============================================================
 def build_personalized_stats():
-    """构建个性化行为统计（基于所有已确认对局）
+    """构建个性化行为统计（从持久化表 player_behavior_stats 读取）
 
-    统计：
-    1. 每个玩家拿每个身份时，各行为的出现频率
-    2. 全局平均：所有玩家拿每个身份时，各行为的出现频率
+    读取：
+    1. 每个玩家拿每个身份时，各行为的出现次数和总局数
+    2. 计算频率和全局平均
 
     返回:
         personalized_stats: {player_id: {role_id: {action_id: frequency}}}
         global_stats: {role_id: {action_id: frequency}}
         player_game_counts: {player_id: {role_id: game_count}}
     """
-    # 1. 查询每个玩家拿每个身份的总局数（已确认对局）
-    player_game_counts = {}
-    game_count_rows = query_all("""
-        SELECT gp.player_id, gp.actual_role_id, COUNT(DISTINCT gp.game_id) as game_count
-        FROM game_players gp
-        JOIN games g ON gp.game_id = g.id
-        WHERE g.status = 'confirmed' AND gp.actual_role_id IS NOT NULL
-        GROUP BY gp.player_id, gp.actual_role_id
+    # 从持久化表读取所有统计数据
+    stats_rows = query_all("""
+        SELECT player_id, role_id, action_id, count, game_count
+        FROM player_behavior_stats
     """)
-    for row in game_count_rows:
+
+    # 1. 构建玩家对局数（去重，因为同一 player_id+role_id 的 game_count 相同）
+    player_game_counts = {}
+    for row in stats_rows:
         pid = row["player_id"]
-        rid = row["actual_role_id"]
+        rid = row["role_id"]
         if pid not in player_game_counts:
             player_game_counts[pid] = {}
         player_game_counts[pid][rid] = row["game_count"]
 
-    # 2. 查询每个玩家拿每个身份时，各行为的出现次数
-    personalized_counts = {}  # {player_id: {role_id: {action_id: count}}}
-    behavior_rows = query_all("""
-        SELECT gp.player_id, gp.actual_role_id, b.action_id, COUNT(*) as cnt
-        FROM game_players gp
-        JOIN games g ON gp.game_id = g.id
-        JOIN behavior_records b ON gp.game_id = b.game_id AND gp.player_id = b.actor_id
-        WHERE g.status = 'confirmed' AND gp.actual_role_id IS NOT NULL
-        GROUP BY gp.player_id, gp.actual_role_id, b.action_id
-    """)
-    for row in behavior_rows:
-        pid = row["player_id"]
-        rid = row["actual_role_id"]
-        aid = row["action_id"]
-        if pid not in personalized_counts:
-            personalized_counts[pid] = {}
-        if rid not in personalized_counts[pid]:
-            personalized_counts[pid][rid] = {}
-        personalized_counts[pid][rid][aid] = row["cnt"]
-
-    # 3. 计算每个玩家的个性化频率
+    # 2. 构建个性化频率
     personalized_stats = {}
-    for pid, role_counts in personalized_counts.items():
-        personalized_stats[pid] = {}
-        for rid, action_counts in role_counts.items():
-            game_count = player_game_counts.get(pid, {}).get(rid, 0)
-            if game_count > 0:
-                personalized_stats[pid][rid] = {
-                    aid: cnt / game_count for aid, cnt in action_counts.items()
-                }
+    for row in stats_rows:
+        pid = row["player_id"]
+        rid = row["role_id"]
+        aid = row["action_id"]
+        cnt = row["count"]
+        gc = row["game_count"]
 
-    # 4. 计算全局平均频率（所有玩家拿每个身份时各行为的平均频率）
+        if gc > 0:
+            if pid not in personalized_stats:
+                personalized_stats[pid] = {}
+            if rid not in personalized_stats[pid]:
+                personalized_stats[pid][rid] = {}
+            personalized_stats[pid][rid][aid] = cnt / gc
+
+    # 3. 计算全局平均频率（所有玩家拿每个身份时各行为的平均频率）
     global_action_counts = {}  # {role_id: {action_id: total_count}}
     global_game_counts = {}    # {role_id: total_game_count}
-    for pid, role_counts in personalized_counts.items():
-        for rid, action_counts in role_counts.items():
-            if rid not in global_action_counts:
-                global_action_counts[rid] = {}
-            for aid, cnt in action_counts.items():
-                global_action_counts[rid][aid] = global_action_counts[rid].get(aid, 0) + cnt
+    for row in stats_rows:
+        rid = row["role_id"]
+        aid = row["action_id"]
+        cnt = row["count"]
+        gc = row["game_count"]
 
-    for pid, role_games in player_game_counts.items():
-        for rid, gc in role_games.items():
-            global_game_counts[rid] = global_game_counts.get(rid, 0) + gc
+        if rid not in global_action_counts:
+            global_action_counts[rid] = {}
+        global_action_counts[rid][aid] = global_action_counts[rid].get(aid, 0) + cnt
+
+        # 全局对局数需要去重（同一 player_id+role_id 只算一次）
+        if rid not in global_game_counts:
+            global_game_counts[rid] = set()
+        global_game_counts[rid].add(row["player_id"])
 
     global_stats = {}
     for rid, action_counts in global_action_counts.items():
-        total_games = global_game_counts.get(rid, 0)
+        total_games = len(global_game_counts.get(rid, set()))
         if total_games > 0:
             global_stats[rid] = {
                 aid: cnt / total_games for aid, cnt in action_counts.items()
             }
 
     return personalized_stats, global_stats, player_game_counts
+
+
+def update_personalized_stats(game_id):
+    """对局确认后，更新个性化行为统计表（增量学习）
+
+    对该对局的每个玩家：
+    - 获取其真实身份
+    - 统计其在这局中做了哪些行为
+    - 更新 player_behavior_stats 表：count += 行为次数，game_count += 1
+
+    参数:
+        game_id: 对局ID
+
+    返回:
+        更新的玩家数量
+    """
+    # 1. 获取该对局玩家的真实身份
+    game_players = query_all(
+        "SELECT player_id, actual_role_id FROM game_players WHERE game_id = " + ph(),
+        (game_id,)
+    )
+    player_actual_role = {
+        gp["player_id"]: gp["actual_role_id"]
+        for gp in game_players
+        if gp.get("actual_role_id")
+    }
+
+    if not player_actual_role:
+        return 0
+
+    # 2. 获取该对局的行为记录，按发起者分组
+    behaviors = query_all(
+        "SELECT actor_id, action_id FROM behavior_records WHERE game_id = " + ph(),
+        (game_id,)
+    )
+    behaviors_by_actor = {}
+    for b in behaviors:
+        actor = b["actor_id"]
+        if actor not in behaviors_by_actor:
+            behaviors_by_actor[actor] = {}
+        aid = b["action_id"]
+        behaviors_by_actor[actor][aid] = behaviors_by_actor[actor].get(aid, 0) + 1
+
+    # 3. 更新每个玩家的统计
+    updated_count = 0
+    for player_id, role_id in player_actual_role.items():
+        action_counts = behaviors_by_actor.get(player_id, {})
+
+        # 对每个行为，更新或插入统计记录
+        for action_id, count in action_counts.items():
+            # 检查是否已存在记录
+            existing = query_one(
+                "SELECT id, count, game_count FROM player_behavior_stats "
+                "WHERE player_id = " + ph() + " AND role_id = " + ph() + " AND action_id = " + ph(),
+                (player_id, role_id, action_id)
+            )
+
+            if existing:
+                # 更新现有记录
+                execute_write(
+                    "UPDATE player_behavior_stats SET count = count + " + ph() +
+                    ", game_count = " + ph() + ", updated_at = CURRENT_TIMESTAMP WHERE id = " + ph(),
+                    (count, 1, existing["id"])
+                )
+            else:
+                # 插入新记录
+                execute_write(
+                    "INSERT INTO player_behavior_stats (player_id, role_id, action_id, count, game_count) "
+                    "VALUES (" + ph() + ", " + ph() + ", " + ph() + ", " + ph() + ", " + ph() + ")",
+                    (player_id, role_id, action_id, count, 1)
+                )
+
+        # 如果玩家没有任何行为，不插入记录（game_count 为0，数据不足时不使用个性化修正）
+        updated_count += 1
+
+    return updated_count
 
 
 def get_personalized_factor(player_id, role_id, action_id,
@@ -1079,6 +1143,9 @@ def update_weights_from_game(game_id):
                 (new_weight, new_sample_count, action_id, actual_role_id)
             )
             updated_count += 1
+
+    # 改进#第四阶段：同时更新个性化行为统计（持久化存储）
+    update_personalized_stats(game_id)
 
     return updated_count
 
