@@ -135,6 +135,17 @@ CREATE TABLE IF NOT EXISTS player_behavior_stats (
     UNIQUE(player_id, role_id, action_id)
 );
 
+-- 12. 机器学习模型表（存储训练好的逻辑回归/决策树模型）
+CREATE TABLE IF NOT EXISTS ml_models (
+    id           SERIAL PRIMARY KEY,
+    model_type   VARCHAR(50) NOT NULL,    -- logistic_regression / decision_tree
+    target_class VARCHAR(50) NOT NULL,    -- 目标类别：好人/狼人/具体身份名
+    model_data   TEXT NOT NULL,            -- 模型参数（JSON格式）
+    sample_count INTEGER DEFAULT 0,        -- 训练样本数
+    accuracy     REAL DEFAULT 0,           -- 训练集准确率
+    trained_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ============================================================
 -- 索引（提升查询性能）
 -- ============================================================

@@ -800,6 +800,319 @@ def get_personalized_factor(player_id, role_id, action_id,
 
 
 # ============================================================
+# 改进#第五阶段：机器学习模型（逻辑回归）
+# ============================================================
+# ML模型超参数
+ML_MIN_SAMPLES = 50          # 最少训练样本数，低于此数不使用ML模型
+ML_LEARNING_RATE = 0.01      # 逻辑回归梯度下降学习率
+ML_ITERATIONS = 100           # 每次训练的迭代次数
+ML_REGULARIZATION = 0.01      # L2正则化系数，防止过拟合
+
+# 行为ID列表（用于特征提取，按ID排序）
+ALL_ACTION_IDS = list(range(1, 20))  # 1-19，共19种行为
+
+
+def extract_features(actor_behaviors):
+    """从玩家的行为记录中提取特征向量
+
+    特征：
+    1. 每种行为的出现次数（19维）
+    2. 行为总数（1维）
+    3. 是否跳预言家（1维）
+    4. 是否有狼人行为（冲锋/倒钩/自爆，1维）
+
+    返回:
+        features: 特征列表 [f1, f2, ..., f22]
+    """
+    # 每种行为的出现次数（19维）
+    action_counts = [0] * len(ALL_ACTION_IDS)
+    for b in actor_behaviors:
+        aid = b["action_id"]
+        if 1 <= aid <= 19:
+            action_counts[aid - 1] += 1
+
+    # 行为总数
+    total_actions = sum(action_counts)
+
+    # 是否跳预言家
+    has_jump_prophet = 1 if action_counts[0] > 0 else 0  # action_id=1
+
+    # 是否有狼人行为（冲锋=12, 倒钩=11, 自爆=13）
+    has_wolf_action = 1 if (action_counts[10] > 0 or action_counts[11] > 0 or action_counts[12] > 0) else 0
+
+    # 组合特征向量
+    features = action_counts + [total_actions, has_jump_prophet, has_wolf_action]
+    return features
+
+
+def sigmoid(z):
+    """Sigmoid函数，把分数转换成0~1的概率"""
+    if z >= 0:
+        return 1 / (1 + math.exp(-z))
+    else:
+        exp_z = math.exp(z)
+        return exp_z / (1 + exp_z)
+
+
+class LogisticRegression:
+    """逻辑回归二分类器（纯Python实现，无外部依赖）
+
+    用于判断玩家是"好人"还是"狼人"。
+    预测时输出是狼人的概率，然后调整朴素贝叶斯的阵营概率。
+    """
+
+    def __init__(self, n_features):
+        """初始化模型
+
+        参数:
+            n_features: 特征维度
+        """
+        self.n_features = n_features
+        self.weights = [0.0] * n_features  # 权重向量
+        self.bias = 0.0                     # 偏置
+        self.sample_count = 0               # 训练样本数
+        self.accuracy = 0.0                 # 训练集准确率
+
+    def predict_proba(self, features):
+        """预测是正类（狼人）的概率
+
+        参数:
+            features: 特征向量
+
+        返回:
+            是狼人的概率（0~1）
+        """
+        z = self.bias + sum(w * x for w, x in zip(self.weights, features))
+        return sigmoid(z)
+
+    def train_step(self, features, label):
+        """单步训练（增量学习）
+
+        参数:
+            features: 特征向量
+            label: 真实标签（1=狼人，0=好人）
+        """
+        # 预测概率
+        pred = self.predict_proba(features)
+        error = label - pred
+
+        # 梯度下降更新权重和偏置（带L2正则化）
+        for i in range(self.n_features):
+            # 梯度 = error * x_i - regularization * w_i
+            gradient = error * features[i] - ML_REGULARIZATION * self.weights[i]
+            self.weights[i] += ML_LEARNING_RATE * gradient
+
+        # 更新偏置
+        self.bias += ML_LEARNING_RATE * error
+
+        self.sample_count += 1
+
+    def to_dict(self):
+        """把模型转换成字典（用于持久化存储）"""
+        return {
+            "n_features": self.n_features,
+            "weights": self.weights,
+            "bias": self.bias,
+            "sample_count": self.sample_count,
+            "accuracy": self.accuracy,
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        """从字典加载模型"""
+        model = cls(data["n_features"])
+        model.weights = data["weights"]
+        model.bias = data["bias"]
+        model.sample_count = data.get("sample_count", 0)
+        model.accuracy = data.get("accuracy", 0.0)
+        return model
+
+
+def save_ml_model(model, model_type, target_class):
+    """保存ML模型到数据库
+
+    参数:
+        model: 模型对象（LogisticRegression）
+        model_type: 模型类型字符串
+        target_class: 目标类别字符串
+    """
+    import json
+    model_data = json.dumps(model.to_dict())
+
+    # 检查是否已存在同类型模型
+    existing = query_one(
+        "SELECT id FROM ml_models WHERE model_type = " + ph() + " AND target_class = " + ph(),
+        (model_type, target_class)
+    )
+
+    if existing:
+        # 更新现有模型
+        execute_write(
+            "UPDATE ml_models SET model_data = " + ph() + ", sample_count = " + ph() +
+            ", accuracy = " + ph() + ", trained_at = CURRENT_TIMESTAMP WHERE id = " + ph(),
+            (model_data, model.sample_count, model.accuracy, existing["id"])
+        )
+    else:
+        # 插入新模型
+        execute_write(
+            "INSERT INTO ml_models (model_type, target_class, model_data, sample_count, accuracy) "
+            "VALUES (" + ph() + ", " + ph() + ", " + ph() + ", " + ph() + ", " + ph() + ")",
+            (model_type, target_class, model_data, model.sample_count, model.accuracy)
+        )
+
+
+def load_ml_model(model_type, target_class):
+    """从数据库加载ML模型
+
+    参数:
+        model_type: 模型类型字符串
+        target_class: 目标类别字符串
+
+    返回:
+        模型对象，如果不存在则返回None
+    """
+    import json
+    record = query_one(
+        "SELECT model_data FROM ml_models WHERE model_type = " + ph() + " AND target_class = " + ph(),
+        (model_type, target_class)
+    )
+
+    if not record:
+        return None
+
+    data = json.loads(record["model_data"])
+    return LogisticRegression.from_dict(data)
+
+
+def train_ml_model_from_game(game_id):
+    """从一局已确认对局中训练ML模型（增量学习）
+
+    参数:
+        game_id: 对局ID
+
+    返回:
+        是否成功训练
+    """
+    # 1. 获取对局玩家的真实身份
+    game_players = query_all(
+        "SELECT player_id, actual_role_id FROM game_players WHERE game_id = " + ph(),
+        (game_id,)
+    )
+    player_roles = {
+        gp["player_id"]: gp["actual_role_id"]
+        for gp in game_players
+        if gp.get("actual_role_id")
+    }
+
+    if not player_roles:
+        return False
+
+    # 2. 获取该对局的行为记录，按发起者分组
+    behaviors = query_all(
+        "SELECT actor_id, action_id FROM behavior_records WHERE game_id = " + ph(),
+        (game_id,)
+    )
+    behaviors_by_actor = {}
+    for b in behaviors:
+        actor = b["actor_id"]
+        if actor not in behaviors_by_actor:
+            behaviors_by_actor[actor] = []
+        behaviors_by_actor[actor].append(b)
+
+    # 3. 加载或创建逻辑回归模型（好人vs狼人）
+    model = load_ml_model("logistic_regression", "好人_vs_狼人")
+    if model is None:
+        # 特征维度 = 19种行为 + 行为总数 + 是否跳预言家 + 是否有狼人行为 = 22
+        model = LogisticRegression(n_features=22)
+
+    # 4. 对每个玩家进行增量训练
+    for player_id, role_id in player_roles.items():
+        actor_behaviors = behaviors_by_actor.get(player_id, [])
+        features = extract_features(actor_behaviors)
+
+        # 标签：1=狼人，0=好人（第三方暂不参与训练）
+        if role_id in (7, 8, 9):  # 狼人、狼王、白狼王
+            label = 1
+        elif role_id in (1, 2, 3, 4, 5, 6):  # 预言家、女巫、猎人、白痴、守卫、平民
+            label = 0
+        else:
+            continue  # 第三方身份跳过
+
+        model.train_step(features, label)
+
+    # 5. 保存模型
+    save_ml_model(model, "logistic_regression", "好人_vs_狼人")
+
+    return True
+
+
+def apply_ml_correction(player_id, actor_behaviors, results, role_ids, role_camps, role_names):
+    """应用ML模型修正预测结果
+
+    如果ML模型已训练且样本数足够，用逻辑回归预测的狼人概率调整阵营概率。
+
+    参数:
+        player_id: 玩家ID
+        actor_behaviors: 该玩家的行为记录
+        results: 预测结果字典
+        role_ids: 所有身份ID
+        role_camps: 身份ID→阵营映射
+        role_names: 身份ID→名称映射
+    """
+    # 加载ML模型
+    model = load_ml_model("logistic_regression", "好人_vs_狼人")
+    if model is None or model.sample_count < ML_MIN_SAMPLES:
+        return  # 模型未训练或样本不足，不修正
+
+    # 提取特征并预测狼人概率
+    features = extract_features(actor_behaviors)
+    wolf_prob_ml = model.predict_proba(features)  # ML模型预测的狼人概率
+    good_prob_ml = 1.0 - wolf_prob_ml
+
+    # 获取当前朴素贝叶斯预测的阵营概率
+    probs = results[player_id]["probabilities"]
+    wolf_prob_nb = sum(p for rid, p in probs.items() if role_camps.get(rid) == "狼人")
+    good_prob_nb = sum(p for rid, p in probs.items() if role_camps.get(rid) == "好人")
+
+    if wolf_prob_nb == 0 or good_prob_nb == 0:
+        return  # 避免除零
+
+    # 混合策略：取朴素贝叶斯和ML模型的几何平均
+    # 新狼人概率 ∝ sqrt(朴素贝叶斯狼人概率 × ML狼人概率)
+    # 新好人概率 ∝ sqrt(朴素贝叶斯好人概率 × ML好人概率)
+    new_wolf_prob = math.sqrt(wolf_prob_nb * wolf_prob_ml)
+    new_good_prob = math.sqrt(good_prob_nb * good_prob_ml)
+
+    # 归一化
+    total = new_wolf_prob + new_good_prob
+    if total == 0:
+        return
+    new_wolf_prob /= total
+    new_good_prob /= total
+
+    # 按比例调整各身份的概率
+    for rid in role_ids:
+        camp = role_camps.get(rid)
+        if camp == "狼人" and wolf_prob_nb > 0:
+            probs[rid] = probs[rid] * (new_wolf_prob / wolf_prob_nb)
+        elif camp == "好人" and good_prob_nb > 0:
+            probs[rid] = probs[rid] * (new_good_prob / good_prob_nb)
+        # 第三方身份保持不变
+
+    # 重新归一化
+    total = sum(probs.values())
+    if total > 0:
+        for rid in role_ids:
+            probs[rid] = round(probs[rid] / total, 6)
+
+    # 更新最高概率身份
+    top_role_id = max(probs, key=probs.get) if probs else None
+    results[player_id]["top_role_id"] = top_role_id
+    results[player_id]["top_role_name"] = role_names.get(top_role_id, "") if top_role_id else ""
+    results[player_id]["top_probability"] = round(probs[top_role_id], 6) if top_role_id else 0.0
+
+
+# ============================================================
 # 主预测函数
 # ============================================================
 def predict_game(game_id):
@@ -1013,6 +1326,11 @@ def predict_game(game_id):
     rel_matrix = build_relationship_matrix(behaviors, player_ids)
     apply_relationship_correction(results, rel_matrix, role_camps, role_ids, role_names)
 
+    # 改进#第五阶段：ML模型修正（逻辑回归）- 如果模型已训练且样本足够，调整阵营概率
+    for player_id in player_ids:
+        actor_behaviors = behaviors_by_actor.get(player_id, [])
+        apply_ml_correction(player_id, actor_behaviors, results, role_ids, role_camps, role_names)
+
     # 8. 保存预测结果到数据库
     save_predictions(game_id, results)
 
@@ -1146,6 +1464,12 @@ def update_weights_from_game(game_id):
 
     # 改进#第四阶段：同时更新个性化行为统计（持久化存储）
     update_personalized_stats(game_id)
+
+    # 改进#第五阶段：训练ML模型（逻辑回归，增量学习）
+    try:
+        train_ml_model_from_game(game_id)
+    except Exception as e:
+        print(f"[ML训练] 警告: 对局 {game_id} 训练失败: {e}")
 
     return updated_count
 
