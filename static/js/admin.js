@@ -1,10 +1,20 @@
 // 库管理
 
 let currentTab = 'roles';
+let allRoles = [];  // 所有身份列表（用于版型配置）
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadAllRolesForSetup();
     loadRoles();
 });
+
+// 加载所有身份（用于版型配置表单）
+async function loadAllRolesForSetup() {
+    const result = await api('GET', '/roles');
+    if (result && result.data) {
+        allRoles = result.data;
+    }
+}
 
 function switchTab(tab) {
     currentTab = tab;
@@ -192,12 +202,78 @@ async function loadSetups() {
     container.innerHTML = html;
 }
 
+// 渲染版型身份配置列表
+function renderSetupRoleList(configData) {
+    const container = document.getElementById('setup-config-list');
+    if (!allRoles || allRoles.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>暂无身份，请先在身份库添加</p></div>';
+        return;
+    }
+
+    let html = '';
+    allRoles.forEach(role => {
+        const count = configData && configData[role.name] ? configData[role.name] : 0;
+        const campCls = getCampClass(role.camp);
+        const hasCount = count > 0;
+        html += `<div class="setup-role-item ${hasCount ? 'has-count' : ''}">
+            <span class="setup-role-name">
+                <span class="setup-role-camp badge badge-${campCls}">${escapeHtml(role.camp || '-')}</span>
+                ${escapeHtml(role.name)}
+            </span>
+            <input type="number" class="setup-role-count ${hasCount ? 'has-value' : ''}"
+                   data-role="${escapeHtml(role.name)}" value="${count}" min="0" max="20"
+                   oninput="onSetupCountChange(this)">
+        </div>`;
+    });
+    container.innerHTML = html;
+    updateSetupTotalCount();
+}
+
+// 数量输入变化时更新样式和总人数
+function onSetupCountChange(input) {
+    const count = parseInt(input.value) || 0;
+    const item = input.closest('.setup-role-item');
+    if (count > 0) {
+        item.classList.add('has-count');
+        input.classList.add('has-value');
+    } else {
+        item.classList.remove('has-count');
+        input.classList.remove('has-value');
+    }
+    updateSetupTotalCount();
+}
+
+// 更新版型总人数显示
+function updateSetupTotalCount() {
+    const inputs = document.querySelectorAll('.setup-role-count');
+    let total = 0;
+    inputs.forEach(input => {
+        total += parseInt(input.value) || 0;
+    });
+    document.getElementById('setup-total-count').textContent = `共 ${total} 人`;
+}
+
+// 从表单收集身份配置JSON
+function collectSetupConfig() {
+    const inputs = document.querySelectorAll('.setup-role-count');
+    const config = {};
+    inputs.forEach(input => {
+        const count = parseInt(input.value) || 0;
+        if (count > 0) {
+            config[input.dataset.role] = count;
+        }
+    });
+    return JSON.stringify(config);
+}
+
 function showSetupModal() {
     document.getElementById('setup-modal-title').textContent = '新增版型';
     document.getElementById('edit-setup-id').value = '';
     document.getElementById('setup-name').value = '';
-    document.getElementById('setup-config').value = '{"狼人":4,"预言家":1,"女巫":1,"猎人":1,"白痴":1,"平民":4}';
     document.getElementById('setup-desc').value = '';
+    // 默认配置：预女猎白
+    const defaultConfig = {"狼人":4,"预言家":1,"女巫":1,"猎人":1,"白痴":1,"平民":4};
+    renderSetupRoleList(defaultConfig);
     document.getElementById('setup-modal').classList.add('show');
 }
 
@@ -205,15 +281,26 @@ function editSetup(s) {
     document.getElementById('setup-modal-title').textContent = '编辑版型';
     document.getElementById('edit-setup-id').value = s.id;
     document.getElementById('setup-name').value = s.name;
-    document.getElementById('setup-config').value = s.role_config;
     document.getElementById('setup-desc').value = s.description || '';
+    // 解析已有JSON配置并回填
+    let configData = {};
+    try {
+        configData = JSON.parse(s.role_config);
+    } catch(e) {
+        configData = {};
+    }
+    renderSetupRoleList(configData);
     document.getElementById('setup-modal').classList.add('show');
 }
 
 async function saveSetup() {
     const id = document.getElementById('edit-setup-id').value;
-    const config = document.getElementById('setup-config').value.trim();
-    try { JSON.parse(config); } catch(e) { showToast('身份配置不是有效的JSON格式', 'error'); return; }
+    const config = collectSetupConfig();
+    const configObj = JSON.parse(config);
+    if (Object.keys(configObj).length === 0) {
+        showToast('请至少为一个身份设置数量', 'error');
+        return;
+    }
     const data = {
         name: document.getElementById('setup-name').value.trim(),
         role_config: config,

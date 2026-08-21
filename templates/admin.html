@@ -91,7 +91,7 @@
 
 <!-- 版型模态框 -->
 <div class="modal-overlay" id="setup-modal">
-    <div class="modal">
+    <div class="modal" style="max-width:600px;">
         <div class="modal-title" id="setup-modal-title">新增版型</div>
         <input type="hidden" id="edit-setup-id">
         <div class="form-group">
@@ -99,9 +99,14 @@
             <input type="text" class="form-control" id="setup-name" placeholder="例如：预女猎白">
         </div>
         <div class="form-group">
-            <label>身份配置 (JSON) <span class="required">*</span></label>
-            <textarea class="form-control" id="setup-config" style="font-family:monospace;" placeholder='{"狼人":4,"预言家":1,"女巫":1,"猎人":1,"白痴":1,"平民":4}'></textarea>
-            <small style="color:#999;">JSON格式，键为身份名称，值为数量</small>
+            <label>身份配置 <span class="required">*</span></label>
+            <div style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
+                <small style="color:#94a3b8;">为每个身份输入数量，数量为0表示不包含</small>
+                <span id="setup-total-count" style="font-size:12px;color:#00f0ff;font-weight:600;">共 0 人</span>
+            </div>
+            <div id="setup-config-list" class="setup-role-list">
+                <div class="empty-state"><p>加载中...</p></div>
+            </div>
         </div>
         <div class="form-group">
             <label>描述</label>

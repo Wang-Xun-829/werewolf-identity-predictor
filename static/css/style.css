@@ -969,6 +969,82 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 }
 
 /* ============================================================
+   版型身份配置列表
+   ============================================================ */
+.setup-role-list {
+    max-height: 360px;
+    overflow-y: auto;
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background: rgba(10, 14, 26, 0.4);
+    padding: 8px;
+}
+
+.setup-role-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    transition: all 0.2s;
+}
+
+.setup-role-item:last-child {
+    margin-bottom: 0;
+}
+
+.setup-role-item:hover {
+    background: rgba(0, 240, 255, 0.04);
+}
+
+.setup-role-item.has-count {
+    background: rgba(0, 240, 255, 0.08);
+    border: 1px solid var(--border-glow);
+}
+
+.setup-role-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.setup-role-camp {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.setup-role-count {
+    width: 70px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: rgba(10, 14, 26, 0.6);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.setup-role-count:focus {
+    outline: none;
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.15);
+}
+
+.setup-role-count.has-value {
+    border-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+    background: rgba(0, 240, 255, 0.08);
+}
+
+/* ============================================================
    滚动条样式
    ============================================================ */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
