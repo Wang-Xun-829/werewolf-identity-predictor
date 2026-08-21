@@ -56,36 +56,36 @@
                     </select>
                 </div>
             </div>
-            <div class="form-group">
-                <label>具体行为 <span class="required">*</span></label>
-                <div class="autocomplete" id="action-autocomplete">
-                    <input type="text" class="form-control" id="behavior-action-input" placeholder="输入行为名称搜索..." autocomplete="off">
-                    <input type="hidden" id="behavior-action" value="">
-                    <div class="autocomplete-dropdown" id="action-dropdown"></div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>具体行为 <span class="required">*</span></label>
+                    <div class="autocomplete" id="action-autocomplete">
+                        <input type="text" class="form-control" id="behavior-action-input" placeholder="输入行为名称搜索..." autocomplete="off">
+                        <input type="hidden" id="behavior-action" value="">
+                        <div class="autocomplete-dropdown" id="action-dropdown"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>发起者声明身份</label>
+                    <select class="form-control" id="behavior-role">
+                        <option value="">不声明</option>
+                    </select>
                 </div>
             </div>
             <!-- 高级选项（默认折叠） -->
             <div class="advanced-options">
                 <button type="button" class="btn btn-secondary btn-sm advanced-toggle" onclick="toggleAdvancedOptions()">
-                    <span class="toggle-icon">▶</span> 高级选项（声明身份/阵营/轮次等）
+                    <span class="toggle-icon">▶</span> 高级选项（声明阵营/轮次/阶段/备注）
                 </button>
                 <div class="advanced-content" id="advanced-content" style="display:none;">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>发起者声明身份</label>
-                            <select class="form-control" id="behavior-role">
-                                <option value="">不声明</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>发起者声明阵营</label>
-                            <select class="form-control" id="behavior-camp">
-                                <option value="">不声明</option>
-                                <option value="好人">好人</option>
-                                <option value="狼人">狼人</option>
-                                <option value="第三方">第三方</option>
-                            </select>
-                        </div>
+                    <div class="form-group">
+                        <label>发起者声明阵营</label>
+                        <select class="form-control" id="behavior-camp">
+                            <option value="">不声明</option>
+                            <option value="好人">好人</option>
+                            <option value="狼人">狼人</option>
+                            <option value="第三方">第三方</option>
+                        </select>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
