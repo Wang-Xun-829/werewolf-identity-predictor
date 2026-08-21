@@ -42,6 +42,10 @@ def create_player():
     name = data.get('name', '').strip()
     if not name:
         return fail("玩家名称不能为空")
+    # 检查名字唯一性
+    existing = query_one("SELECT id FROM players WHERE name = " + ph(), (name,))
+    if existing:
+        return fail(f"玩家名称 '{name}' 已存在，请使用其他名称")
     new_id = execute_write(
         f"INSERT INTO players (name) VALUES ({ph()})",
         (name,)
@@ -57,22 +61,70 @@ def update_player(player_id):
     name = data.get('name', '').strip()
     if not name:
         return fail("玩家名称不能为空")
+    player = query_one("SELECT * FROM players WHERE id = " + ph(), (player_id,))
+    if not player:
+        return fail("玩家不存在", 404)
+    # 检查名字唯一性（排除当前玩家）
+    existing = query_one(
+        "SELECT id FROM players WHERE name = " + ph() + " AND id != " + ph(),
+        (name, player_id)
+    )
+    if existing:
+        return fail(f"玩家名称 '{name}' 已存在，请使用其他名称")
     execute_write(
         f"UPDATE players SET name = {ph()} WHERE id = {ph()}",
         (name, player_id)
     )
     player = query_one("SELECT * FROM players WHERE id = " + ph(), (player_id,))
-    if not player:
-        return fail("玩家不存在", 404)
     return ok(player, "玩家更新成功")
 
 
 @api.route('/players/<int:player_id>', methods=['DELETE'])
 def delete_player(player_id):
-    """删除玩家"""
+    """删除玩家（先检查关联记录）"""
     player = query_one("SELECT * FROM players WHERE id = " + ph(), (player_id,))
     if not player:
         return fail("玩家不存在", 404)
+    # 检查是否有关联的行为记录（作为发起者或目标）
+    used_as_actor = query_one(
+        "SELECT COUNT(*) as cnt FROM behavior_records WHERE actor_id = " + ph(),
+        (player_id,)
+    )
+    used_as_target = query_one(
+        "SELECT COUNT(*) as cnt FROM behavior_records WHERE target_id = " + ph(),
+        (player_id,)
+    )
+    used_in_games = query_one(
+        "SELECT COUNT(*) as cnt FROM game_players WHERE player_id = " + ph(),
+        (player_id,)
+    )
+    used_in_predictions = query_one(
+        "SELECT COUNT(*) as cnt FROM predictions WHERE player_id = " + ph(),
+        (player_id,)
+    )
+    used_in_scores = query_one(
+        "SELECT COUNT(*) as cnt FROM prediction_scores WHERE player_id = " + ph(),
+        (player_id,)
+    )
+
+    total_used = (
+        (used_as_actor["cnt"] if used_as_actor else 0) +
+        (used_as_target["cnt"] if used_as_target else 0) +
+        (used_in_games["cnt"] if used_in_games else 0) +
+        (used_in_predictions["cnt"] if used_in_predictions else 0) +
+        (used_in_scores["cnt"] if used_in_scores else 0)
+    )
+
+    if total_used > 0:
+        detail = []
+        if used_as_actor and used_as_actor["cnt"] > 0:
+            detail.append(f"行为发起者 {used_as_actor['cnt']} 条")
+        if used_as_target and used_as_target["cnt"] > 0:
+            detail.append(f"行为目标 {used_as_target['cnt']} 条")
+        if used_in_games and used_in_games["cnt"] > 0:
+            detail.append(f"对局参与 {used_in_games['cnt']} 次")
+        return fail(f"该玩家有关联记录无法删除：{', '.join(detail)}。请先删除相关对局记录。")
+
     execute_write(f"DELETE FROM players WHERE id = {ph()}", (player_id,))
     return ok(message="玩家删除成功")
 

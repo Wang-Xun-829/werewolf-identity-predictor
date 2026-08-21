@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS setups (
 -- 4. 玩家表
 CREATE TABLE IF NOT EXISTS players (
     id         SERIAL PRIMARY KEY,
-    name       VARCHAR(100) NOT NULL,           -- 玩家昵称/标识
+    name       VARCHAR(100) NOT NULL UNIQUE,   -- 玩家昵称/标识（唯一，避免重名混淆）
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
