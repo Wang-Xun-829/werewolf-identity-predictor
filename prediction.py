@@ -104,17 +104,16 @@ def calculate_prior(game_id):
                         rid = name_to_id[role_name]
                         role_counts[rid] = count
                         total += count
-                if total > 0:
-                    # 版型中有该身份则按比例，没有则给极小值避免对数无穷
+                if total > 0 and role_counts:
+                    # 只返回版型中包含的身份的先验，版型外的身份不返回
                     prior = {}
-                    for rid in role_ids:
-                        cnt = role_counts.get(rid, 0)
-                        prior[rid] = cnt / total if cnt > 0 else 0.001
+                    for rid, cnt in role_counts.items():
+                        prior[rid] = cnt / total
                     return prior
             except (json.JSONDecodeError, TypeError):
                 pass
 
-    # 均匀分布
+    # 均匀分布（没有版型时）
     return {rid: 1.0 / len(role_ids) for rid in role_ids}
 
 
@@ -1188,6 +1187,24 @@ def predict_game(game_id):
 
     # 3. 获取所有启用身份和行为
     all_roles = query_all("SELECT id, name, camp FROM roles WHERE is_active = TRUE")
+
+    # 根据当前版型过滤身份：只保留版型中包含的身份
+    setup_role_names = set()
+    if game_info and game_info.get("setup_id"):
+        setup = query_one("SELECT role_config FROM setups WHERE id = " + ph(), (game_info["setup_id"],))
+        if setup and setup.get("role_config"):
+            try:
+                config = json.loads(setup["role_config"])
+                setup_role_names = set(config.keys())
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    # 如果版型有配置，则只保留版型中的身份；否则使用所有启用身份
+    if setup_role_names:
+        filtered_roles = [r for r in all_roles if r["name"] in setup_role_names]
+        if filtered_roles:  # 确保过滤后至少有一个身份
+            all_roles = filtered_roles
+
     role_ids = [r["id"] for r in all_roles]
     role_names = {r["id"]: r["name"] for r in all_roles}
     role_camps = {r["id"]: r["camp"] for r in all_roles}
