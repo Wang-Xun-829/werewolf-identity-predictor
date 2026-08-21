@@ -39,7 +39,7 @@
         </div>
 
         <!-- 行为录入 -->
-        <div class="card">
+        <div class="card" id="behavior-form-card">
             <div class="card-title">
                 <span>录入行为</span>
                 <button class="btn btn-success btn-sm" onclick="refreshPredictions()">🔄 刷新预测</button>
@@ -56,53 +56,59 @@
                     </select>
                 </div>
             </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>具体行为 <span class="required">*</span></label>
-                    <div class="autocomplete" id="action-autocomplete">
-                        <input type="text" class="form-control" id="behavior-action-input" placeholder="输入行为名称搜索..." autocomplete="off">
-                        <input type="hidden" id="behavior-action" value="">
-                        <div class="autocomplete-dropdown" id="action-dropdown"></div>
+            <div class="form-group">
+                <label>具体行为 <span class="required">*</span></label>
+                <div class="autocomplete" id="action-autocomplete">
+                    <input type="text" class="form-control" id="behavior-action-input" placeholder="输入行为名称搜索..." autocomplete="off">
+                    <input type="hidden" id="behavior-action" value="">
+                    <div class="autocomplete-dropdown" id="action-dropdown"></div>
+                </div>
+            </div>
+            <!-- 高级选项（默认折叠） -->
+            <div class="advanced-options">
+                <button type="button" class="btn btn-secondary btn-sm advanced-toggle" onclick="toggleAdvancedOptions()">
+                    <span class="toggle-icon">▶</span> 高级选项（声明身份/阵营/轮次等）
+                </button>
+                <div class="advanced-content" id="advanced-content" style="display:none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>发起者声明身份</label>
+                            <select class="form-control" id="behavior-role">
+                                <option value="">不声明</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>发起者声明阵营</label>
+                            <select class="form-control" id="behavior-camp">
+                                <option value="">不声明</option>
+                                <option value="好人">好人</option>
+                                <option value="狼人">狼人</option>
+                                <option value="第三方">第三方</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>轮次</label>
+                            <input type="number" class="form-control" id="behavior-round" placeholder="第几天" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label>阶段</label>
+                            <select class="form-control" id="behavior-phase">
+                                <option value="">不指定</option>
+                                <option value="黑夜">黑夜</option>
+                                <option value="白天发言">白天发言</option>
+                                <option value="投票">投票</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>备注</label>
+                        <input type="text" class="form-control" id="behavior-notes" placeholder="可选">
                     </div>
                 </div>
-                <div class="form-group">
-                    <label>发起者声明身份</label>
-                    <select class="form-control" id="behavior-role">
-                        <option value="">不声明</option>
-                    </select>
-                </div>
             </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>发起者声明阵营</label>
-                    <select class="form-control" id="behavior-camp">
-                        <option value="">不声明</option>
-                        <option value="好人">好人</option>
-                        <option value="狼人">狼人</option>
-                        <option value="第三方">第三方</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>轮次</label>
-                    <input type="number" class="form-control" id="behavior-round" placeholder="第几天" min="1">
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>阶段</label>
-                    <select class="form-control" id="behavior-phase">
-                        <option value="">不指定</option>
-                        <option value="黑夜">黑夜</option>
-                        <option value="白天发言">白天发言</option>
-                        <option value="投票">投票</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>备注</label>
-                    <input type="text" class="form-control" id="behavior-notes" placeholder="可选">
-                </div>
-            </div>
-            <button class="btn btn-primary" style="width:100%;" onclick="addBehavior()">➕ 录入行为并刷新预测</button>
+            <button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="addBehavior()">➕ 录入行为并刷新预测</button>
         </div>
 
         <div class="card">
@@ -127,6 +133,12 @@
     </div>
     <div id="game-result" style="margin-top:16px;"></div>
 </div>
+
+<!-- 手机端浮动按钮：快速录入行为 -->
+<button class="fab-btn" id="fab-add-behavior" onclick="scrollToBehaviorForm()">
+    <span class="fab-icon">➕</span>
+    <span class="fab-text">录入行为</span>
+</button>
 
 <!-- 添加玩家模态框 -->
 <div class="modal-overlay" id="add-player-modal">

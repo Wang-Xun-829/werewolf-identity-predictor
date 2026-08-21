@@ -532,3 +532,30 @@ function updateActiveItem(items) {
         active.scrollIntoView({ block: 'nearest' });
     }
 }
+
+// 展开/收起高级选项
+function toggleAdvancedOptions() {
+    const content = document.getElementById('advanced-content');
+    const toggle = document.querySelector('.advanced-toggle');
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        toggle.classList.add('expanded');
+    } else {
+        content.style.display = 'none';
+        toggle.classList.remove('expanded');
+    }
+}
+
+// 平滑滚动到行为录入表单（手机端浮动按钮）
+function scrollToBehaviorForm() {
+    const card = document.getElementById('behavior-form-card');
+    if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // 滚动后短暂高亮表单
+        card.style.transition = 'box-shadow 0.3s';
+        card.style.boxShadow = '0 0 30px rgba(0, 240, 255, 0.4)';
+        setTimeout(() => {
+            card.style.boxShadow = '';
+        }, 1500);
+    }
+}

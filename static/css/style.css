@@ -1045,6 +1045,95 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 }
 
 /* ============================================================
+   高级选项折叠
+   ============================================================ */
+.advanced-options {
+    margin: 12px 0;
+}
+
+.advanced-toggle {
+    width: 100%;
+    justify-content: flex-start;
+    background: rgba(100, 116, 139, 0.15);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 10px 14px;
+}
+
+.advanced-toggle:hover {
+    background: rgba(100, 116, 139, 0.25);
+    color: var(--text-primary);
+    border-color: var(--border-glow);
+}
+
+.advanced-toggle .toggle-icon {
+    display: inline-block;
+    transition: transform 0.3s;
+    font-size: 10px;
+    margin-right: 6px;
+}
+
+.advanced-toggle.expanded .toggle-icon {
+    transform: rotate(90deg);
+}
+
+.advanced-content {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   手机端浮动按钮（FAB）
+   ============================================================ */
+.fab-btn {
+    display: none;
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 90;
+    padding: 14px 22px;
+    border: none;
+    border-radius: 50px;
+    background: linear-gradient(135deg, var(--neon-blue), var(--neon-cyan));
+    color: #0a0e1a;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 6px 24px rgba(0, 240, 255, 0.5),
+                0 0 40px rgba(0, 240, 255, 0.2);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-family: inherit;
+    align-items: center;
+    gap: 8px;
+}
+
+.fab-btn:hover {
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 8px 32px rgba(0, 240, 255, 0.6),
+                0 0 50px rgba(0, 240, 255, 0.3);
+}
+
+.fab-btn:active {
+    transform: translateY(0) scale(0.98);
+}
+
+.fab-icon {
+    font-size: 16px;
+}
+
+.fab-text {
+    letter-spacing: 0.5px;
+}
+
+/* ============================================================
    滚动条样式
    ============================================================ */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -1177,6 +1266,20 @@ textarea.form-control { resize: vertical; min-height: 80px; }
     .prob-bar-fill { font-size: 10px; padding-right: 6px; }
     .prob-item { margin-bottom: 8px; }
     .prob-item-label { font-size: 11px; }
+
+    /* 手机端显示浮动按钮 */
+    .fab-btn {
+        display: inline-flex;
+        bottom: 16px;
+        right: 16px;
+        padding: 12px 18px;
+        font-size: 13px;
+    }
+
+    /* 手机端行为录入表单增加底部间距，避免被浮动按钮遮挡 */
+    #behavior-form-card {
+        margin-bottom: 80px;
+    }
 }
 
 /* ============================================================
