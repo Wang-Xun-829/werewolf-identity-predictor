@@ -7,6 +7,7 @@ let allActions = [];
 let allRoles = [];
 let gamePlayers = [];
 let predictions = [];
+let selectedPlayerId = null;  // 当前选中的玩家ID（书签切换）
 
 document.addEventListener('DOMContentLoaded', async () => {
     await Promise.all([loadAllPlayers(), loadAllActions(), loadAllRoles()]);
@@ -84,34 +85,87 @@ function populateSelects() {
 // 加载预测结果
 async function loadPredictions() {
     const result = await api('GET', `/games/${gameId}/predictions`);
-    const container = document.getElementById('players-predictions');
+    const bookmarksContainer = document.getElementById('players-bookmarks');
+    const predictionCard = document.getElementById('selected-player-prediction-card');
+    const predictionContainer = document.getElementById('selected-player-prediction');
+
     if (!result || !result.data || result.data.length === 0) {
-        container.innerHTML = '<div class="empty-state"><p>暂无玩家，请先添加玩家</p></div>';
+        bookmarksContainer.innerHTML = '<div class="empty-state"><p>暂无玩家</p></div>';
+        predictionCard.style.display = 'none';
         return;
     }
     predictions = result.data;
+
+    // 如果没有选中玩家，默认选中第一个
+    if (!selectedPlayerId || !predictions.find(p => p.player_id === selectedPlayerId)) {
+        selectedPlayerId = predictions[0].player_id;
+    }
+
+    // 渲染玩家书签列表
+    renderPlayerBookmarks();
+
+    // 渲染选中玩家的预测结果
+    renderSelectedPlayerPrediction();
+}
+
+// 渲染玩家书签列表
+function renderPlayerBookmarks() {
+    const container = document.getElementById('players-bookmarks');
     let html = '';
     predictions.forEach(p => {
         const seat = gamePlayers.find(gp => gp.player_id === p.player_id)?.seat_number;
         const seatLabel = seat ? `${seat}号 ` : '';
-        html += `<div class="player-card">
-            <div class="player-card-header">
-                <span class="player-name">${seatLabel}${escapeHtml(p.player_name)}</span>
-                <span class="player-top-role">→ <strong style="color:#4a6cf7;">${escapeHtml(p.top_role_name || '-')}</strong> (${(p.top_probability*100).toFixed(1)}%)</span>
-            </div>
-            <div class="prob-list">`;
-        p.all_probabilities.slice(0, 5).forEach(prob => {
-            const cls = getCampClass(prob.camp);
-            html += `<div class="prob-item">
-                <div class="prob-item-label">
-                    <span>${escapeHtml(prob.role_name)} ${campBadge(prob.camp)}</span>
-                    <span>${(prob.probability*100).toFixed(1)}%</span>
-                </div>
-                <div class="prob-bar"><div class="prob-bar-fill prob-${cls}" style="width:${prob.probability*100}%"></div></div>
-            </div>`;
-        });
-        html += '</div></div>';
+        const isActive = p.player_id === selectedPlayerId;
+        const topCamp = p.all_probabilities && p.all_probabilities[0] ? p.all_probabilities[0].camp : '';
+        const topRoleCls = getCampClass(topCamp);
+        html += `<div class="player-bookmark ${isActive ? 'active' : ''}" onclick="selectPlayer(${p.player_id})">
+            <span class="bookmark-name">${seatLabel}${escapeHtml(p.player_name)}</span>
+            <span class="bookmark-role badge badge-${topRoleCls}">${escapeHtml(p.top_role_name || '-')}</span>
+        </div>`;
     });
+    container.innerHTML = html;
+}
+
+// 切换选中玩家
+function selectPlayer(playerId) {
+    selectedPlayerId = playerId;
+    renderPlayerBookmarks();
+    renderSelectedPlayerPrediction();
+}
+
+// 渲染选中玩家的详细预测结果
+function renderSelectedPlayerPrediction() {
+    const card = document.getElementById('selected-player-prediction-card');
+    const container = document.getElementById('selected-player-prediction');
+    const nameEl = document.getElementById('selected-player-name');
+    const topRoleEl = document.getElementById('selected-player-top-role');
+
+    const p = predictions.find(x => x.player_id === selectedPlayerId);
+    if (!p) {
+        card.style.display = 'none';
+        return;
+    }
+
+    card.style.display = 'block';
+    const seat = gamePlayers.find(gp => gp.player_id === p.player_id)?.seat_number;
+    const seatLabel = seat ? `${seat}号 ` : '';
+    nameEl.textContent = `${seatLabel}${p.player_name} 的身份预测`;
+    topRoleEl.textContent = `${p.top_role_name || '-'} (${(p.top_probability * 100).toFixed(1)}%)`;
+    const topCamp = p.all_probabilities && p.all_probabilities[0] ? p.all_probabilities[0].camp : '';
+    topRoleEl.className = `badge badge-${getCampClass(topCamp)}`;
+
+    let html = '<div class="prob-list">';
+    p.all_probabilities.forEach(prob => {
+        const cls = getCampClass(prob.camp);
+        html += `<div class="prob-item">
+            <div class="prob-item-label">
+                <span>${escapeHtml(prob.role_name)} ${campBadge(prob.camp)}</span>
+                <span>${(prob.probability * 100).toFixed(1)}%</span>
+            </div>
+            <div class="prob-bar"><div class="prob-bar-fill prob-${cls}" style="width:${prob.probability * 100}%"></div></div>
+        </div>`;
+    });
+    html += '</div>';
     container.innerHTML = html;
 }
 

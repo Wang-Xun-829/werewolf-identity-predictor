@@ -12,21 +12,33 @@
 </div>
 
 <div class="grid grid-sidebar">
-    <!-- 左侧：玩家列表 + 实时预测 -->
+    <!-- 左侧：玩家书签列表 -->
     <div>
         <div class="card">
             <div class="card-title">
-                <span>玩家与实时预测</span>
-                <button class="btn btn-primary btn-sm" onclick="showAddPlayerModal()">+ 添加玩家</button>
+                <span>玩家列表</span>
+                <button class="btn btn-primary btn-sm" onclick="showAddPlayerModal()">+ 添加</button>
             </div>
-            <div id="players-predictions">
+            <div id="players-bookmarks" class="player-bookmarks">
                 <div class="empty-state"><p>加载中...</p></div>
             </div>
         </div>
     </div>
 
-    <!-- 右侧：行为录入 + 行为记录 -->
+    <!-- 右侧：选中玩家预测结果 + 行为录入 + 行为记录 -->
     <div>
+        <!-- 选中玩家的预测结果 -->
+        <div class="card" id="selected-player-prediction-card" style="display:none;">
+            <div class="card-title">
+                <span id="selected-player-name">玩家预测结果</span>
+                <span id="selected-player-top-role" class="badge badge-info"></span>
+            </div>
+            <div id="selected-player-prediction">
+                <div class="empty-state"><p>请从左侧选择玩家查看预测</p></div>
+            </div>
+        </div>
+
+        <!-- 行为录入 -->
         <div class="card">
             <div class="card-title">
                 <span>录入行为</span>
