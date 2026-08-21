@@ -594,7 +594,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 }
 
 /* ============================================================
-   玩家书签列表（左侧栏）
+   玩家书签列表（左侧栏）- 纵向布局
    ============================================================ */
 .player-bookmarks {
     display: flex;
@@ -914,6 +914,61 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .autocomplete input.form-control { border-bottom-right-radius: 0; border-bottom-left-radius: 0; }
 
 /* ============================================================
+   多选玩家列表
+   ============================================================ */
+.player-multi-select {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background: rgba(10, 14, 26, 0.4);
+    padding: 8px;
+}
+
+.player-multi-select label {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 4px;
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.player-multi-select label:last-child {
+    margin-bottom: 0;
+}
+
+.player-multi-select label:hover {
+    background: rgba(0, 240, 255, 0.06);
+}
+
+.player-multi-select label:has(input:checked) {
+    background: rgba(0, 240, 255, 0.12);
+    border: 1px solid var(--border-glow);
+    color: var(--neon-cyan);
+}
+
+.player-multi-select input[type="checkbox"] {
+    margin-right: 10px;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--neon-cyan);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.player-multi-select .player-in-game {
+    color: var(--text-muted);
+    font-size: 11px;
+    margin-left: auto;
+    font-style: italic;
+}
+
+/* ============================================================
    滚动条样式
    ============================================================ */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -969,8 +1024,9 @@ textarea.form-control { resize: vertical; min-height: 80px; }
     /* 容器 */
     .container { padding: 12px; }
 
-    /* 网格 */
-    .grid-2, .grid-3, .grid-sidebar { grid-template-columns: 1fr; }
+    /* 网格 - 手机端保持对局详情页左右分栏 */
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .grid-sidebar { grid-template-columns: 130px 1fr; gap: 12px; }
 
     /* 表单 */
     .form-row { flex-direction: column; gap: 0; }
@@ -1013,22 +1069,16 @@ textarea.form-control { resize: vertical; min-height: 80px; }
         max-width: none;
     }
 
-    /* 玩家书签 - 手机端改为横向滚动标签栏 */
+    /* 玩家书签 - 手机端保持纵向，紧凑显示 */
     .player-bookmarks {
-        flex-direction: row;
-        overflow-x: auto;
-        gap: 8px;
-        padding-bottom: 8px;
-        -webkit-overflow-scrolling: touch;
+        gap: 6px;
     }
 
     .player-bookmark {
-        flex-shrink: 0;
-        padding: 10px 14px;
+        padding: 10px 10px;
         flex-direction: column;
         align-items: flex-start;
         gap: 4px;
-        min-width: 90px;
     }
 
     .player-bookmark:hover {
@@ -1037,6 +1087,8 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 
     .bookmark-name {
         font-size: 12px;
+        word-break: break-all;
+        line-height: 1.3;
     }
 
     .bookmark-role {
@@ -1045,8 +1097,10 @@ textarea.form-control { resize: vertical; min-height: 80px; }
     }
 
     /* 概率条 */
-    .prob-bar { height: 22px; }
-    .prob-bar-fill { font-size: 10px; padding-right: 8px; }
+    .prob-bar { height: 20px; }
+    .prob-bar-fill { font-size: 10px; padding-right: 6px; }
+    .prob-item { margin-bottom: 8px; }
+    .prob-item-label { font-size: 11px; }
 }
 
 /* ============================================================

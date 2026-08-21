@@ -249,34 +249,79 @@ async function deleteBehavior(id) {
     }
 }
 
-// 添加玩家到对局
+// 添加玩家到对局（多选）
 function showAddPlayerModal() {
-    const select = document.getElementById('add-player-select');
+    const list = document.getElementById('add-player-list');
     const addedIds = new Set(gamePlayers.map(gp => gp.player_id));
-    const available = allPlayers.filter(p => !addedIds.has(p.id));
-    if (available.length === 0) {
-        showToast('所有玩家都已添加，或请先去玩家管理页创建玩家', 'info');
+
+    if (allPlayers.length === 0) {
+        list.innerHTML = '<div class="empty-state"><p>暂无玩家，请先去玩家管理页创建</p></div>';
+        document.getElementById('add-player-modal').classList.add('show');
         return;
     }
-    select.innerHTML = '<option value="">请选择玩家</option>';
-    available.forEach(p => {
-        select.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)}</option>`;
+
+    let html = '';
+    allPlayers.forEach(p => {
+        const inGame = addedIds.has(p.id);
+        html += `<label>
+            <input type="checkbox" value="${p.id}" ${inGame ? 'checked disabled' : ''} onchange="updateSelectedCount()">
+            <span>${escapeHtml(p.name)}</span>
+            ${inGame ? '<span class="player-in-game">已在对局</span>' : ''}
+        </label>`;
     });
-    document.getElementById('add-player-seat').value = '';
+    list.innerHTML = html;
+    updateSelectedCount();
     document.getElementById('add-player-modal').classList.add('show');
 }
 
+// 全选/全不选
+function toggleAllPlayers(checked) {
+    const checkboxes = document.querySelectorAll('#add-player-list input[type="checkbox"]:not(:disabled)');
+    checkboxes.forEach(cb => { cb.checked = checked; });
+    updateSelectedCount();
+}
+
+// 更新已选人数
+function updateSelectedCount() {
+    const checked = document.querySelectorAll('#add-player-list input[type="checkbox"]:checked:not(:disabled)');
+    document.getElementById('selected-count').textContent = `已选 ${checked.length} 人`;
+}
+
+// 批量添加玩家到对局
 async function addPlayerToGame() {
-    const playerId = document.getElementById('add-player-select').value;
-    const seat = document.getElementById('add-player-seat').value;
-    if (!playerId) { showToast('请选择玩家', 'error'); return; }
-    const data = { player_id: parseInt(playerId) };
-    if (seat) data.seat_number = parseInt(seat);
-    const result = await api('POST', `/games/${gameId}/players`, data);
-    if (result) {
-        showToast('玩家已添加', 'success');
+    const checked = document.querySelectorAll('#add-player-list input[type="checkbox"]:checked:not(:disabled)');
+    if (checked.length === 0) {
+        showToast('请至少选择一名玩家', 'error');
+        return;
+    }
+
+    const addedIds = new Set(gamePlayers.map(gp => gp.player_id));
+    const toAdd = Array.from(checked).map(cb => parseInt(cb.value)).filter(id => !addedIds.has(id));
+
+    if (toAdd.length === 0) {
+        showToast('选中的玩家都已在对局中', 'info');
+        return;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < toAdd.length; i++) {
+        const data = { player_id: toAdd[i] };
+        const result = await api('POST', `/games/${gameId}/players`, data);
+        if (result) {
+            successCount++;
+        } else {
+            failCount++;
+        }
+    }
+
+    if (successCount > 0) {
+        showToast(`成功添加 ${successCount} 名玩家${failCount > 0 ? `，${failCount} 名失败` : ''}`, 'success');
         hideModal('add-player-modal');
         await loadGame();
+    } else {
+        showToast('添加失败，请重试', 'error');
     }
 }
 
