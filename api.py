@@ -1173,6 +1173,71 @@ def list_confirmed_identities(game_id):
     return ok(identities)
 
 
+@api.route('/games/<int:game_id>/available_roles', methods=['GET'])
+def get_available_roles(game_id):
+    """获取当前对局可用的身份列表（考虑版型配置和已确认数量）
+
+    返回：
+        list of dict: 可用身份列表，每个包含id, name, camp, total_count, confirmed_count, available_count
+    """
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+
+    # 获取版型配置
+    setup = query_one("SELECT * FROM setups WHERE id = " + ph(), (game['setup_id'],))
+    if not setup:
+        return fail("版型不存在", 404)
+
+    # 解析版型配置（role_config字段是JSON格式，键是身份名称）
+    import json
+    try:
+        role_config = json.loads(setup['role_config']) if setup.get('role_config') else {}
+    except:
+        role_config = {}
+
+    # 获取所有身份（用于根据名称查找ID）
+    all_roles_list = query_all("SELECT id, name FROM roles")
+    role_name_to_id = {r['name']: r['id'] for r in all_roles_list}
+
+    # 获取已确认的身份数量
+    confirmed_counts = {}
+    confirmed = query_all(
+        f"SELECT role_id, COUNT(*) as count FROM game_confirmed_identities WHERE game_id = {ph()} AND role_id IS NOT NULL GROUP BY role_id",
+        (game_id,)
+    )
+    for c in confirmed:
+        confirmed_counts[c['role_id']] = c['count']
+
+    # 构建可用身份列表
+    available_roles = []
+    for role_name, count in role_config.items():
+        # 根据身份名称查找身份ID
+        role_id = role_name_to_id.get(role_name)
+        if not role_id:
+            continue
+        role = query_one("SELECT * FROM roles WHERE id = " + ph(), (role_id,))
+        if not role:
+            continue
+        total_count = int(count)
+        confirmed_count = confirmed_counts.get(role_id, 0)
+        available_count = total_count - confirmed_count
+        available_roles.append({
+            'id': role_id,
+            'name': role['name'],
+            'camp': role['camp'],
+            'total_count': total_count,
+            'confirmed_count': confirmed_count,
+            'available_count': available_count,
+            'available': available_count > 0
+        })
+
+    # 按可用数量排序（可用的排前面）
+    available_roles.sort(key=lambda x: (-x['available'], x['name']))
+
+    return ok(available_roles)
+
+
 @api.route('/games/<int:game_id>/confirmed_identities', methods=['POST'])
 def set_confirmed_identity(game_id):
     """设置确认身份

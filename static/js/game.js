@@ -1314,22 +1314,42 @@ async function confirmPhaseAdjust() {
 // ============================================================
 
 // 显示确认身份模态框
-function showConfirmIdentityModal() {
+async function showConfirmIdentityModal() {
     if (!selectedPlayerId) {
         showToast('请先选择一个玩家', 'error');
         return;
     }
     const player = allPlayers.find(p => p.id === selectedPlayerId);
     document.getElementById('confirm-identity-player-name').textContent = player ? player.name : '';
-    // 填充身份下拉框
+
+    // 获取可用身份列表（考虑版型配置和已确认数量）
+    const result = await api('GET', '/games/' + gameId + '/available_roles');
     const roleSelect = document.getElementById('confirm-role-select');
     roleSelect.innerHTML = '';
-    allRoles.forEach(role => {
-        const opt = document.createElement('option');
-        opt.value = role.id;
-        opt.textContent = role.name + ' (' + role.camp + ')';
-        roleSelect.appendChild(opt);
-    });
+
+    if (result && result.data && result.data.length > 0) {
+        result.data.forEach(role => {
+            const opt = document.createElement('option');
+            opt.value = role.id;
+            if (role.available) {
+                opt.textContent = role.name + ' (' + role.camp + ') - 剩余' + role.available_count + '个';
+            } else {
+                opt.textContent = role.name + ' (' + role.camp + ') - 已满员';
+                opt.disabled = true;
+                opt.style.color = '#999';
+            }
+            roleSelect.appendChild(opt);
+        });
+    } else {
+        // 降级：显示所有身份
+        allRoles.forEach(role => {
+            const opt = document.createElement('option');
+            opt.value = role.id;
+            opt.textContent = role.name + ' (' + role.camp + ')';
+            roleSelect.appendChild(opt);
+        });
+    }
+
     hideModal('confirm-identity-modal');
     document.getElementById('confirm-identity-modal').classList.add('show');
 }
