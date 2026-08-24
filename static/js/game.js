@@ -152,7 +152,16 @@ async function loadPredictions() {
 function renderPlayerBookmarks() {
     const container = document.getElementById('players-bookmarks');
     let html = '';
-    predictions.forEach(p => {
+    // 按座位号从小到大排序（没有座位号的排在最后）
+    const sortedPredictions = [...predictions].sort((a, b) => {
+        const seatA = gamePlayers.find(gp => gp.player_id === a.player_id)?.seat_number;
+        const seatB = gamePlayers.find(gp => gp.player_id === b.player_id)?.seat_number;
+        if (!seatA && !seatB) return 0;
+        if (!seatA) return 1;
+        if (!seatB) return -1;
+        return seatA - seatB;
+    });
+    sortedPredictions.forEach(p => {
         const seat = gamePlayers.find(gp => gp.player_id === p.player_id)?.seat_number;
         const seatLabel = seat ? `${seat}号 ` : '';
         const isActive = p.player_id === selectedPlayerId;
@@ -421,9 +430,14 @@ function renderAddPlayerList(players, addedIds) {
     let html = '';
     players.forEach(p => {
         const inGame = addedIds.has(p.id);
-        html += `<label>
+        // 获取已在对局玩家的座位号
+        const existingSeat = inGame ? gamePlayers.find(gp => gp.player_id === p.id)?.seat_number : '';
+        html += `<label style="display:flex;align-items:center;gap:8px;">
             <input type="checkbox" value="${p.id}" ${inGame ? 'checked disabled' : ''} onchange="updateSelectedCount()">
             <span>${escapeHtml(p.name)}</span>
+            <input type="number" class="seat-number-input" data-player-id="${p.id}" 
+                value="${existingSeat || ''}" placeholder="座号" min="1" 
+                style="width:60px;margin-left:auto;padding:4px 8px;font-size:13px;border:1px solid var(--border-color);border-radius:4px;background:var(--input-bg);color:var(--text-primary);">
             ${inGame ? '<span class="player-in-game">已在对局</span>' : ''}
         </label>`;
     });
@@ -475,7 +489,12 @@ async function addPlayerToGame() {
     let failCount = 0;
 
     for (let i = 0; i < toAdd.length; i++) {
-        const data = { player_id: toAdd[i] };
+        const playerId = toAdd[i];
+        // 获取该玩家的座位号输入
+        const seatInput = document.querySelector(`.seat-number-input[data-player-id="${playerId}"]`);
+        const seatNumber = seatInput && seatInput.value ? parseInt(seatInput.value) : null;
+        const data = { player_id: playerId };
+        if (seatNumber) data.seat_number = seatNumber;
         const result = await api('POST', `/games/${gameId}/players`, data);
         if (result) {
             successCount++;
@@ -484,8 +503,26 @@ async function addPlayerToGame() {
         }
     }
 
-    if (successCount > 0) {
-        showToast(`成功添加 ${successCount} 名玩家${failCount > 0 ? `，${failCount} 名失败` : ''}`, 'success');
+    if (successCount > 0 || failCount === 0) {
+        // 更新已在对局玩家的座位号（如果被修改了）
+        const seatInputs = document.querySelectorAll('.seat-number-input');
+        let seatUpdated = 0;
+        for (const input of seatInputs) {
+            const playerId = parseInt(input.dataset.playerId);
+            const inGame = addedIds.has(playerId);
+            if (!inGame) continue; // 只处理已在对局的玩家
+            const existingSeat = gamePlayers.find(gp => gp.player_id === playerId)?.seat_number;
+            const newSeat = input.value ? parseInt(input.value) : null;
+            // 只有座位号发生变化时才更新
+            if ((existingSeat || null) !== (newSeat || null)) {
+                const result = await api('PUT', `/games/${gameId}/players/${playerId}/seat`, { seat_number: newSeat });
+                if (result) seatUpdated++;
+            }
+        }
+        let message = `成功添加 ${successCount} 名玩家`;
+        if (seatUpdated > 0) message += `，更新 ${seatUpdated} 个座位号`;
+        if (failCount > 0) message += `，${failCount} 名失败`;
+        showToast(message, 'success');
         hideModal('add-player-modal');
         await loadGame();
     } else {

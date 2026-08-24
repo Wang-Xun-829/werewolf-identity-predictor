@@ -488,6 +488,27 @@ def remove_game_player(game_id, player_id):
     return ok(message="玩家移除成功")
 
 
+@api.route('/games/<int:game_id>/players/<int:player_id>/seat', methods=['PUT'])
+def update_player_seat(game_id, player_id):
+    """更新玩家座位号"""
+    data = request.get_json() or {}
+    seat_number = data.get('seat_number')
+    if seat_number is None or seat_number == '':
+        return fail("座位号不能为空")
+    # 检查玩家是否在对局中
+    existing = query_one(
+        f"SELECT * FROM game_players WHERE game_id={ph()} AND player_id={ph()}",
+        (game_id, player_id)
+    )
+    if not existing:
+        return fail("该玩家不在此对局中")
+    execute_write(
+        f"UPDATE game_players SET seat_number={ph()} WHERE game_id={ph()} AND player_id={ph()}",
+        (seat_number, game_id, player_id)
+    )
+    return ok(message="座位号更新成功")
+
+
 @api.route('/games/<int:game_id>/players/<int:player_id>/role', methods=['PUT'])
 def set_player_actual_role(game_id, player_id):
     """设置玩家真实身份（对局结束确认时用）"""
