@@ -330,6 +330,75 @@
     </div>
 </div>
 
+<!-- 编辑行为模态框 -->
+<div class="modal-overlay" id="edit-behavior-modal">
+    <div class="modal" style="max-width:600px;">
+        <div class="modal-title">编辑行为记录</div>
+        <input type="hidden" id="edit-behavior-id">
+        <div class="form-row">
+            <div class="form-group">
+                <label>行为发起者 <span class="required">*</span></label>
+                <select class="form-control" id="edit-behavior-actor"></select>
+            </div>
+            <div class="form-group">
+                <label>行为目标</label>
+                <select class="form-control" id="edit-behavior-target">
+                    <option value="">无目标</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>具体行为 <span class="required">*</span></label>
+            <select class="form-control" id="edit-behavior-action"></select>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>发起者声明身份</label>
+                <select class="form-control" id="edit-behavior-role">
+                    <option value="">不声明</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>发起者声明阵营</label>
+                <select class="form-control" id="edit-behavior-camp">
+                    <option value="">不声明</option>
+                    <option value="好人">好人</option>
+                    <option value="狼人">狼人</option>
+                    <option value="第三方">第三方</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>轮次</label>
+                <input type="number" class="form-control" id="edit-behavior-round" min="1">
+            </div>
+            <div class="form-group">
+                <label>阶段</label>
+                <select class="form-control" id="edit-behavior-phase">
+                    <option value="">不指定</option>
+                    <option value="警上发言">警上发言</option>
+                    <option value="警徽投票">警徽投票</option>
+                    <option value="死讯公布">死讯公布</option>
+                    <option value="白天发言">白天发言</option>
+                    <option value="PK发言">PK发言</option>
+                    <option value="放逐投票">放逐投票</option>
+                    <option value="遗言">遗言</option>
+                    <option value="退水自爆">退水/自爆</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>备注</label>
+            <input type="text" class="form-control" id="edit-behavior-notes" placeholder="可选">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('edit-behavior-modal')">取消</button>
+            <button class="btn btn-primary" onclick="saveBehaviorEdit()">保存修改</button>
+        </div>
+    </div>
+</div>
+
 <!-- 阶段调整模态框 -->
 <div class="modal-overlay" id="phase-adjust-modal">
     <div class="modal" style="max-width:500px;">

@@ -327,7 +327,7 @@ function renderBehaviors(behaviors) {
                         ${b.target_name ? `<span class="behavior-target">→ ${escapeHtml(b.target_name)}</span>` : ''}
                         ${b.notes ? `<span class="behavior-notes" title="${escapeHtml(b.notes)}">📝</span>` : ''}
                     </div>
-                    ${gameData.status === '进行中' ? `<span class="behavior-delete" onclick="deleteBehavior(${b.id})" title="删除">✕</span>` : ''}
+                    ${gameData.status === '进行中' ? `<span class="behavior-edit" onclick="editBehavior(${b.id})" title="编辑" style="cursor:pointer;color:#00f0ff;margin-right:8px;">✏️</span><span class="behavior-delete" onclick="deleteBehavior(${b.id})" title="删除">✕</span>` : ''}
                 </div>
             </div>`;
         });
@@ -1442,5 +1442,127 @@ function renderProphetInference(data) {
         chainsDiv.innerHTML = chHtml;
     } else {
         chainsDiv.style.display = 'none';
+    }
+}
+
+
+// ============================================================
+// 编辑行为记录
+// ============================================================
+
+// 打开编辑行为模态框
+async function editBehavior(behavior_id) {
+    // 获取行为记录的详细信息
+    const behavior = gameData.behaviors.find(b => b.id === behavior_id);
+    if (!behavior) {
+        showToast('行为记录不存在', 'error');
+        return;
+    }
+
+    // 填充表单
+    document.getElementById('edit-behavior-id').value = behavior_id;
+
+    // 填充行为发起者
+    const actorSelect = document.getElementById('edit-behavior-actor');
+    actorSelect.innerHTML = '';
+    allPlayers.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        if (p.id === behavior.actor_id) opt.selected = true;
+        actorSelect.appendChild(opt);
+    });
+
+    // 填充行为目标
+    const targetSelect = document.getElementById('edit-behavior-target');
+    targetSelect.innerHTML = '<option value="">无目标</option>';
+    allPlayers.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        if (p.id === behavior.target_id) opt.selected = true;
+        targetSelect.appendChild(opt);
+    });
+
+    // 填充具体行为
+    const actionSelect = document.getElementById('edit-behavior-action');
+    actionSelect.innerHTML = '';
+    allActions.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = a.name;
+        if (a.id === behavior.action_id) opt.selected = true;
+        actionSelect.appendChild(opt);
+    });
+
+    // 填充声明身份
+    const roleSelect = document.getElementById('edit-behavior-role');
+    roleSelect.innerHTML = '<option value="">不声明</option>';
+    allRoles.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r.id;
+        opt.textContent = r.name + ' (' + r.camp + ')';
+        if (r.id === behavior.actor_role_id) opt.selected = true;
+        roleSelect.appendChild(opt);
+    });
+
+    // 填充声明阵营
+    document.getElementById('edit-behavior-camp').value = behavior.actor_camp || '';
+
+    // 填充轮次和阶段
+    document.getElementById('edit-behavior-round').value = behavior.round_number || '';
+    document.getElementById('edit-behavior-phase').value = behavior.phase || '';
+
+    // 填充备注
+    document.getElementById('edit-behavior-notes').value = behavior.notes || '';
+
+    // 显示模态框
+    hideModal('edit-behavior-modal');
+    document.getElementById('edit-behavior-modal').classList.add('show');
+}
+
+// 保存行为修改
+async function saveBehaviorEdit() {
+    const behavior_id = parseInt(document.getElementById('edit-behavior-id').value);
+    const actor_id = parseInt(document.getElementById('edit-behavior-actor').value);
+    const target_id = document.getElementById('edit-behavior-target').value;
+    const action_id = parseInt(document.getElementById('edit-behavior-action').value);
+    const actor_role_id = document.getElementById('edit-behavior-role').value;
+    const actor_camp = document.getElementById('edit-behavior-camp').value;
+    const round_number = document.getElementById('edit-behavior-round').value;
+    const phase = document.getElementById('edit-behavior-phase').value;
+    const notes = document.getElementById('edit-behavior-notes').value.trim();
+
+    if (!actor_id) {
+        showToast('请选择行为发起者', 'error');
+        return;
+    }
+    if (!action_id) {
+        showToast('请选择具体行为', 'error');
+        return;
+    }
+
+    const data = {
+        actor_id: actor_id,
+        action_id: action_id
+    };
+    if (target_id) data.target_id = parseInt(target_id);
+    if (actor_role_id) data.actor_role_id = parseInt(actor_role_id);
+    if (actor_camp) data.actor_camp = actor_camp;
+    if (round_number) data.round_number = parseInt(round_number);
+    if (phase) data.phase = phase;
+    if (notes) data.notes = notes;
+
+    const result = await api('PUT', '/behaviors/' + behavior_id, data);
+    if (result) {
+        showToast('行为记录更新成功', 'success');
+        hideModal('edit-behavior-modal');
+        // 刷新预测结果和行为记录
+        await loadPredictions();
+        const gameResult = await api('GET', '/games/' + gameId);
+        if (gameResult && gameResult.data) {
+            gameData = gameResult.data;
+            renderBehaviors(gameData.behaviors || []);
+        }
     }
 }
