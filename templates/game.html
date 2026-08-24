@@ -29,10 +29,16 @@
     <div>
         <!-- 选中玩家的预测结果 -->
         <div class="card" id="selected-player-prediction-card" style="display:none;">
-            <div class="card-title">
+            <div class="card-title" style="flex-wrap:wrap;gap:8px;">
                 <span id="selected-player-name">玩家预测结果</span>
                 <span id="selected-player-top-role" class="badge badge-info"></span>
             </div>
+            <!-- 情景切换标签 -->
+            <div class="scenario-tabs" id="scenario-tabs" style="display:none;margin-bottom:12px;">
+                <div class="scenario-tab active" data-scenario-id="" onclick="switchScenario('')">综合预测</div>
+            </div>
+            <!-- 铁狼/铁好人提示 -->
+            <div id="invariant-players-banner" style="display:none;margin-bottom:12px;"></div>
             <div id="selected-player-prediction">
                 <div class="empty-state"><p>请从左侧选择玩家查看预测</p></div>
             </div>
@@ -96,9 +102,14 @@
                             <label>阶段</label>
                             <select class="form-control" id="behavior-phase">
                                 <option value="">不指定</option>
-                                <option value="黑夜">黑夜</option>
+                                <option value="夜间行动">夜间行动</option>
+                                <option value="警上发言">警上发言</option>
+                                <option value="警徽投票">警徽投票</option>
+                                <option value="死讯公布">死讯公布</option>
                                 <option value="白天发言">白天发言</option>
-                                <option value="投票">投票</option>
+                                <option value="PK发言">PK发言</option>
+                                <option value="放逐投票">放逐投票</option>
+                                <option value="遗言">遗言</option>
                             </select>
                         </div>
                     </div>
@@ -112,9 +123,11 @@
         </div>
 
         <div class="card">
-            <div class="card-title">
-                <span>行为记录</span>
-                <span id="behavior-count" style="font-size:12px;color:#999;"></span>
+            <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <span>行为记录 <span id="behavior-count" style="font-size:12px;color:#999;"></span></span>
+                <select class="form-control" id="behavior-filter-player" style="width:auto;min-width:120px;padding:4px 8px;font-size:12px;" onchange="renderBehaviors(window._allBehaviors || [])">
+                    <option value="">全部玩家</option>
+                </select>
             </div>
             <div id="behavior-list" style="max-height:400px;overflow-y:auto;">
                 <div class="empty-state"><p>暂无行为记录</p></div>
@@ -130,6 +143,7 @@
         <button class="btn btn-warning" id="btn-finish" onclick="finishGame()">🏁 结束对局</button>
         <button class="btn btn-success" id="btn-confirm" onclick="showConfirmModal()" style="display:none;">✅ 确认结果（补全身份后）</button>
         <button class="btn btn-secondary" onclick="viewScores()">📊 查看预测打分</button>
+        <button class="btn btn-info" onclick="showScenarioModal()">🔀 情景管理</button>
     </div>
     <div id="game-result" style="margin-top:16px;"></div>
 </div>
@@ -185,6 +199,78 @@
         <div id="scores-content"></div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="hideModal('scores-modal')">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- 情景管理模态框 -->
+<div class="modal-overlay" id="scenario-modal">
+    <div class="modal" style="max-width:700px;max-height:85vh;overflow-y:auto;">
+        <div class="modal-title">多情景假设推理管理</div>
+
+        <!-- 创建新情景 -->
+        <div style="margin-bottom:16px;padding:12px;background:rgba(0,240,255,0.05);border-radius:8px;">
+            <div style="font-weight:600;margin-bottom:8px;">创建新情景</div>
+            <div class="form-row">
+                <div class="form-group" style="flex:2;">
+                    <input type="text" class="form-control" id="new-scenario-name" placeholder="情景名称，如：假设A是预言家">
+                </div>
+                <div class="form-group">
+                    <button class="btn btn-primary" onclick="createScenario()">➕ 创建</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 情景列表 -->
+        <div style="margin-bottom:16px;">
+            <div style="font-weight:600;margin-bottom:8px;">情景列表</div>
+            <div id="scenario-list">
+                <div class="empty-state"><p>加载中...</p></div>
+            </div>
+        </div>
+
+        <!-- 当前情景的假设身份 -->
+        <div id="scenario-assignments-section" style="display:none;">
+            <div style="font-weight:600;margin-bottom:8px;">
+                当前情景假设身份：<span id="current-scenario-name" style="color:var(--neon-cyan);"></span>
+            </div>
+
+            <!-- 添加假设身份 -->
+            <div style="margin-bottom:12px;padding:12px;background:rgba(139,92,246,0.05);border-radius:8px;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>玩家</label>
+                        <select class="form-control" id="assignment-player"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>假设身份/阵营</label>
+                        <select class="form-control" id="assignment-role">
+                            <option value="">请选择</option>
+                            <optgroup label="阵营假设">
+                                <option value="camp:好人">好人</option>
+                                <option value="camp:狼人">狼人</option>
+                            </optgroup>
+                            <optgroup label="具体身份" id="assignment-role-options">
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>置信度</label>
+                        <input type="number" class="form-control" id="assignment-confidence" value="0.9" step="0.05" min="0.5" max="1">
+                    </div>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-primary" onclick="addAssignment()">➕ 添加</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 假设身份列表 -->
+            <div id="assignment-list"></div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('scenario-modal')">关闭</button>
         </div>
     </div>
 </div>

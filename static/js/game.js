@@ -9,6 +9,16 @@ let gamePlayers = [];
 let predictions = [];
 let selectedPlayerId = null;  // 当前选中的玩家ID（书签切换）
 
+// 多情景假设推理
+let scenarios = [];  // 所有情景列表
+let currentScenarioId = '';  // 当前用于预测的情景ID（空字符串表示综合预测）
+let editingScenarioId = null;  // 当前在模态框中编辑的情景ID
+
+// 通用模态框函数
+function hideModal(id) {
+    document.getElementById(id).classList.remove('show');
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     await Promise.all([loadAllPlayers(), loadAllActions(), loadAllRoles()]);
     await loadGame();
@@ -56,6 +66,9 @@ async function loadGame() {
     await loadPredictions();
     // 渲染行为记录
     renderBehaviors(gameData.behaviors || []);
+    // 加载情景列表和铁狼/铁好人
+    await loadScenarios();
+    await loadInvariantPlayers();
 }
 
 // 填充下拉选择框
@@ -64,13 +77,22 @@ function populateSelects() {
     const targetSelect = document.getElementById('behavior-target');
     const actionSelect = document.getElementById('behavior-action');
     const roleSelect = document.getElementById('behavior-role');
+    const filterPlayerSelect = document.getElementById('behavior-filter-player');
 
     actorSelect.innerHTML = '<option value="">请选择发起者</option>';
     targetSelect.innerHTML = '<option value="">无目标</option>';
+    // 保留"全部玩家"选项
+    if (filterPlayerSelect) {
+        filterPlayerSelect.innerHTML = '<option value="">全部玩家</option>';
+    }
+
     gamePlayers.forEach(gp => {
         const seat = gp.seat_number ? `${gp.seat_number}号 ` : '';
         actorSelect.innerHTML += `<option value="${gp.player_id}">${seat}${escapeHtml(gp.player_name)}</option>`;
         targetSelect.innerHTML += `<option value="${gp.player_id}">${seat}${escapeHtml(gp.player_name)}</option>`;
+        if (filterPlayerSelect) {
+            filterPlayerSelect.innerHTML += `<option value="${gp.player_id}">${seat}${escapeHtml(gp.player_name)}</option>`;
+        }
     });
 
     // 行为选择使用多选标签
@@ -84,7 +106,11 @@ function populateSelects() {
 
 // 加载预测结果
 async function loadPredictions() {
-    const result = await api('GET', `/games/${gameId}/predictions`);
+    // 支持情景参数
+    const url = currentScenarioId
+        ? `/games/${gameId}/predictions?scenario_id=${currentScenarioId}`
+        : `/games/${gameId}/predictions`;
+    const result = await api('GET', url);
     const bookmarksContainer = document.getElementById('players-bookmarks');
     const predictionCard = document.getElementById('selected-player-prediction-card');
     const predictionContainer = document.getElementById('selected-player-prediction');
@@ -195,29 +221,94 @@ async function refreshPredictions() {
     showToast('预测已刷新', 'success');
 }
 
-// 渲染行为记录
+// 阶段顺序定义（用于排序）
+const PHASE_ORDER = {
+    '夜间行动': 1,
+    '警上发言': 2,
+    '警徽投票': 3,
+    '死讯公布': 4,
+    '白天发言': 5,
+    'PK发言': 6,
+    '放逐投票': 7,
+    '遗言': 8
+};
+
+// 渲染行为记录（按轮次+阶段分组，时间线样式）
 function renderBehaviors(behaviors) {
     const container = document.getElementById('behavior-list');
-    document.getElementById('behavior-count').textContent = `共 ${behaviors.length} 条`;
-    if (behaviors.length === 0) {
+    // 保存所有行为供筛选使用
+    window._allBehaviors = behaviors;
+
+    // 玩家筛选
+    const filterPlayerId = document.getElementById('behavior-filter-player')?.value || '';
+    let filtered = behaviors;
+    if (filterPlayerId) {
+        const pid = parseInt(filterPlayerId);
+        filtered = behaviors.filter(b => b.actor_id === pid);
+    }
+
+    document.getElementById('behavior-count').textContent = `共 ${filtered.length} 条`;
+    if (filtered.length === 0) {
         container.innerHTML = '<div class="empty-state"><p>暂无行为记录</p></div>';
         return;
     }
-    let html = '';
-    behaviors.forEach(b => {
-        const roundInfo = b.round_number ? `D${b.round_number}` : '';
-        const phaseInfo = b.phase || '';
-        const meta = [roundInfo, phaseInfo].filter(Boolean).join(' ');
-        html += `<div class="behavior-item">
-            <span class="behavior-actor">${escapeHtml(b.actor_name)}</span>
-            <span class="behavior-action">${escapeHtml(b.action_name)}</span>
-            <span class="behavior-target">${b.target_name ? '→ ' + escapeHtml(b.target_name) : ''}</span>
-            ${b.actor_role_name ? `<span class="badge badge-info">声明:${escapeHtml(b.actor_role_name)}</span>` : ''}
-            ${b.actor_camp ? campBadge(b.actor_camp) : ''}
-            <span class="behavior-meta">${meta}</span>
-            ${gameData.status === '进行中' ? `<span class="behavior-delete" onclick="deleteBehavior(${b.id})" title="删除">✕</span>` : ''}
-        </div>`;
+
+    // 按轮次分组
+    const rounds = {};
+    filtered.forEach(b => {
+        const round = b.round_number || 0;  // 0表示未指定轮次
+        if (!rounds[round]) rounds[round] = [];
+        rounds[round].push(b);
     });
+
+    // 按轮次排序
+    const sortedRounds = Object.keys(rounds).map(Number).sort((a, b) => a - b);
+
+    let html = '';
+    let globalIndex = 1;  // 全局顺序编号
+
+    sortedRounds.forEach(round => {
+        const roundBehaviors = rounds[round];
+        // 按阶段排序，阶段相同按创建时间排序
+        roundBehaviors.sort((a, b) => {
+            const phaseA = PHASE_ORDER[a.phase] || 99;
+            const phaseB = PHASE_ORDER[b.phase] || 99;
+            if (phaseA !== phaseB) return phaseA - phaseB;
+            // 按创建时间排序
+            return new Date(a.created_at) - new Date(b.created_at);
+        });
+
+        // 轮次标题
+        const roundTitle = round === 0 ? '未指定轮次' : `第 ${round} 天`;
+        html += `<div class="timeline-round">
+            <div class="timeline-round-title">${roundTitle}</div>`;
+
+        // 该轮的行为记录
+        roundBehaviors.forEach(b => {
+            const phaseInfo = b.phase || '';
+            html += `<div class="timeline-item">
+                <div class="timeline-dot"></div>
+                <div class="timeline-content">
+                    <div class="timeline-header">
+                        <span class="timeline-index">#${globalIndex++}</span>
+                        ${phaseInfo ? `<span class="badge badge-info">${escapeHtml(phaseInfo)}</span>` : ''}
+                        ${b.actor_role_name ? `<span class="badge badge-good">声明:${escapeHtml(b.actor_role_name)}</span>` : ''}
+                        ${b.actor_camp ? campBadge(b.actor_camp) : ''}
+                    </div>
+                    <div class="timeline-body">
+                        <span class="behavior-actor">${escapeHtml(b.actor_name)}</span>
+                        <span class="behavior-action">${escapeHtml(b.action_name)}</span>
+                        ${b.target_name ? `<span class="behavior-target">→ ${escapeHtml(b.target_name)}</span>` : ''}
+                        ${b.notes ? `<span class="behavior-notes" title="${escapeHtml(b.notes)}">📝</span>` : ''}
+                    </div>
+                    ${gameData.status === '进行中' ? `<span class="behavior-delete" onclick="deleteBehavior(${b.id})" title="删除">✕</span>` : ''}
+                </div>
+            </div>`;
+        });
+
+        html += '</div>';  // 结束timeline-round
+    });
+
     container.innerHTML = html;
 }
 
@@ -647,5 +738,246 @@ function scrollToBehaviorForm() {
         setTimeout(() => {
             card.style.boxShadow = '';
         }, 1500);
+    }
+}
+
+// ============================================================
+// 多情景假设推理
+// ============================================================
+
+// 显示情景管理模态框
+async function showScenarioModal() {
+    document.getElementById('new-scenario-name').value = '';
+    editingScenarioId = null;
+    document.getElementById('scenario-assignments-section').style.display = 'none';
+    await loadScenarios();
+    document.getElementById('scenario-modal').classList.add('show');
+}
+
+// 加载情景列表
+async function loadScenarios() {
+    const result = await api('GET', `/games/${gameId}/scenarios`);
+    if (result && result.data) {
+        scenarios = result.data;
+        renderScenarioList();
+        renderScenarioTabs();
+    }
+}
+
+// 渲染情景列表（模态框中）
+function renderScenarioList() {
+    const container = document.getElementById('scenario-list');
+    if (scenarios.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>暂无情景，创建第一个情景开始多情景推理</p></div>';
+        return;
+    }
+    let html = '';
+    scenarios.forEach(s => {
+        const assignmentCount = s.assignments ? s.assignments.length : 0;
+        const isEditing = editingScenarioId === s.id;
+        html += `<div class="scenario-item ${isEditing ? 'active' : ''}" onclick="selectScenarioForEdit(${s.id})">
+            <div class="scenario-item-header">
+                <span class="scenario-item-name">${escapeHtml(s.name)}</span>
+                <span class="scenario-item-count">${assignmentCount}个假设</span>
+            </div>
+            ${s.description ? `<div class="scenario-item-desc">${escapeHtml(s.description)}</div>` : ''}
+            <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteScenario(${s.id})" style="margin-top:8px;">删除</button>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+// 渲染情景切换标签（预测结果区域）
+function renderScenarioTabs() {
+    const container = document.getElementById('scenario-tabs');
+    if (!container) return;
+    if (scenarios.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+    container.style.display = 'flex';
+    let html = `<div class="scenario-tab ${currentScenarioId === '' ? 'active' : ''}" data-scenario-id="" onclick="switchScenario('')">综合预测</div>`;
+    scenarios.forEach(s => {
+        html += `<div class="scenario-tab ${currentScenarioId == s.id ? 'active' : ''}" data-scenario-id="${s.id}" onclick="switchScenario('${s.id}')">${escapeHtml(s.name)}</div>`;
+    });
+    container.innerHTML = html;
+}
+
+// 切换预测情景
+async function switchScenario(scenarioId) {
+    currentScenarioId = scenarioId;
+    renderScenarioTabs();
+    await loadPredictions();
+    // 如果有选中的玩家，重新渲染其预测结果
+    if (selectedPlayerId) {
+        renderSelectedPlayerPrediction();
+    }
+}
+
+// 创建新情景
+async function createScenario() {
+    const name = document.getElementById('new-scenario-name').value.trim();
+    if (!name) {
+        showToast('请输入情景名称', 'error');
+        return;
+    }
+    const result = await api('POST', `/games/${gameId}/scenarios`, { name });
+    if (result) {
+        showToast('情景创建成功', 'success');
+        document.getElementById('new-scenario-name').value = '';
+        await loadScenarios();
+        // 自动选中新创建的情景进行编辑
+        selectScenarioForEdit(result.data.id);
+    }
+}
+
+// 删除情景
+async function deleteScenario(scenarioId) {
+    if (!confirm('确定删除这个情景吗？')) return;
+    const result = await api('DELETE', `/scenarios/${scenarioId}`);
+    if (result) {
+        showToast('情景已删除', 'success');
+        if (currentScenarioId == scenarioId) {
+            currentScenarioId = '';
+        }
+        if (editingScenarioId === scenarioId) {
+            editingScenarioId = null;
+            document.getElementById('scenario-assignments-section').style.display = 'none';
+        }
+        await loadScenarios();
+        await loadPredictions();
+    }
+}
+
+// 选择情景进行编辑
+async function selectScenarioForEdit(scenarioId) {
+    editingScenarioId = scenarioId;
+    const scenario = scenarios.find(s => s.id === scenarioId);
+    if (scenario) {
+        document.getElementById('current-scenario-name').textContent = scenario.name;
+    }
+    document.getElementById('scenario-assignments-section').style.display = 'block';
+    // 填充玩家和身份下拉框
+    const playerSelect = document.getElementById('assignment-player');
+    playerSelect.innerHTML = '<option value="">选择玩家</option>';
+    gamePlayers.forEach(gp => {
+        playerSelect.innerHTML += `<option value="${gp.player_id}">${escapeHtml(gp.player_name)}</option>`;
+    });
+    const roleOptions = document.getElementById('assignment-role-options');
+    roleOptions.innerHTML = '';
+    allRoles.forEach(r => {
+        roleOptions.innerHTML += `<option value="${r.id}">${escapeHtml(r.name)} (${r.camp})</option>`;
+    });
+    renderScenarioList();
+    await loadAssignments();
+}
+
+// 加载当前情景的假设身份
+async function loadAssignments() {
+    if (!editingScenarioId) return;
+    const scenario = scenarios.find(s => s.id === editingScenarioId);
+    if (scenario && scenario.assignments) {
+        renderAssignmentList(scenario.assignments);
+    }
+}
+
+// 渲染假设身份列表
+function renderAssignmentList(assignments) {
+    const container = document.getElementById('assignment-list');
+    if (!assignments || assignments.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>暂无假设身份，添加第一个假设</p></div>';
+        return;
+    }
+    let html = '';
+    assignments.forEach(a => {
+        // 判断是阵营假设还是具体身份
+        let roleDisplay = '';
+        let badgeClass = 'badge-info';
+        if (a.camp) {
+            roleDisplay = `${a.camp}（阵营）`;
+            badgeClass = a.camp === '好人' ? 'badge-success' : 'badge-danger';
+        } else {
+            roleDisplay = a.role_name;
+        }
+        html += `<div class="assignment-item">
+            <span class="assignment-player">${escapeHtml(a.player_name)}</span>
+            <span class="assignment-arrow">→</span>
+            <span class="assignment-role badge ${badgeClass}">${escapeHtml(roleDisplay)}</span>
+            <span class="assignment-confidence">置信度: ${(a.confidence * 100).toFixed(0)}%</span>
+            <button class="btn btn-danger btn-sm" onclick="deleteAssignment(${a.id})">删除</button>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+// 添加假设身份
+async function addAssignment() {
+    if (!editingScenarioId) {
+        showToast('请先选择一个情景', 'error');
+        return;
+    }
+    const playerId = document.getElementById('assignment-player').value;
+    const roleValue = document.getElementById('assignment-role').value;
+    const confidence = parseFloat(document.getElementById('assignment-confidence').value) || 0.9;
+    if (!playerId || !roleValue) {
+        showToast('请选择玩家和身份/阵营', 'error');
+        return;
+    }
+    // 判断是阵营假设还是具体身份
+    let roleId = null;
+    let camp = null;
+    if (roleValue.startsWith('camp:')) {
+        camp = roleValue.substring(5);  // 去掉"camp:"前缀
+    } else {
+        roleId = parseInt(roleValue);
+    }
+    const result = await api('POST', `/scenarios/${editingScenarioId}/assignments`, {
+        player_id: parseInt(playerId),
+        role_id: roleId,
+        camp: camp,
+        confidence: confidence
+    });
+    if (result) {
+        showToast('假设添加成功', 'success');
+        await loadScenarios();
+        // 保持当前编辑的情景
+        selectScenarioForEdit(editingScenarioId);
+    }
+}
+
+// 删除假设身份
+async function deleteAssignment(assignmentId) {
+    const result = await api('DELETE', `/scenario_assignments/${assignmentId}`);
+    if (result) {
+        showToast('假设身份已删除', 'success');
+        await loadScenarios();
+        selectScenarioForEdit(editingScenarioId);
+    }
+}
+
+// 加载铁狼/铁好人
+async function loadInvariantPlayers() {
+    const banner = document.getElementById('invariant-players-banner');
+    if (!banner || scenarios.length === 0) {
+        if (banner) banner.style.display = 'none';
+        return;
+    }
+    const result = await api('GET', `/games/${gameId}/invariant_players`);
+    if (result && result.data) {
+        const { iron_wolves, iron_goods } = result.data;
+        if (iron_wolves.length === 0 && iron_goods.length === 0) {
+            banner.style.display = 'none';
+            return;
+        }
+        let html = '<div style="padding:10px 12px;border-radius:8px;font-size:13px;">';
+        if (iron_wolves.length > 0) {
+            html += `<div style="color:var(--neon-red);margin-bottom:6px;">🐺 铁狼（所有情景下狼人概率>90%）：${iron_wolves.map(w => escapeHtml(w.player_name)).join('、')}</div>`;
+        }
+        if (iron_goods.length > 0) {
+            html += `<div style="color:var(--neon-green);">✨ 铁好人（所有情景下好人概率>90%）：${iron_goods.map(g => escapeHtml(g.player_name)).join('、')}</div>`;
+        }
+        html += '</div>';
+        banner.innerHTML = html;
+        banner.style.display = 'block';
     }
 }

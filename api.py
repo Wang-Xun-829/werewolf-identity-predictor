@@ -691,16 +691,246 @@ def delete_behavior(behavior_id):
 
 
 # ============================================================
+# 6.5 多情景假设推理
+# ============================================================
+@api.route('/games/<int:game_id>/scenarios', methods=['GET'])
+def list_scenarios(game_id):
+    """获取对局的所有假设情景"""
+    scenarios = query_all(
+        f"SELECT * FROM game_scenarios WHERE game_id = {ph()} ORDER BY sort_order, id",
+        (game_id,)
+    )
+    # 为每个情景加载假设身份
+    for s in scenarios:
+        assignments = query_all(
+            f"""SELECT sa.*, p.name as player_name, r.name as role_name, r.camp as role_camp
+                FROM scenario_assignments sa
+                JOIN players p ON sa.player_id = p.id
+                LEFT JOIN roles r ON sa.role_id = r.id
+                WHERE sa.scenario_id = {ph()}""",
+            (s['id'],)
+        )
+        s['assignments'] = assignments
+    return ok(scenarios)
+
+
+@api.route('/games/<int:game_id>/scenarios', methods=['POST'])
+def create_scenario(game_id):
+    """创建假设情景"""
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    if not name:
+        return fail("情景名称不能为空")
+    description = data.get('description', '')
+    sort_order = data.get('sort_order', 0)
+    new_id = execute_write(
+        f"INSERT INTO game_scenarios (game_id, name, description, sort_order) VALUES ({ph()}, {ph()}, {ph()}, {ph()})",
+        (game_id, name, description, sort_order)
+    )
+    scenario = query_one("SELECT * FROM game_scenarios WHERE id = " + ph(), (new_id,))
+    scenario['assignments'] = []
+    return ok(scenario, "情景创建成功")
+
+
+@api.route('/scenarios/<int:scenario_id>', methods=['PUT'])
+def update_scenario(scenario_id):
+    """更新假设情景"""
+    scenario = query_one("SELECT * FROM game_scenarios WHERE id = " + ph(), (scenario_id,))
+    if not scenario:
+        return fail("情景不存在", 404)
+    data = request.get_json() or {}
+    name = data.get('name', scenario['name'])
+    description = data.get('description', scenario['description'])
+    is_active = data.get('is_active', scenario['is_active'])
+    sort_order = data.get('sort_order', scenario['sort_order'])
+    execute_write(
+        f"UPDATE game_scenarios SET name={ph()}, description={ph()}, is_active={ph()}, sort_order={ph()} WHERE id={ph()}",
+        (name, description, is_active, sort_order, scenario_id)
+    )
+    scenario = query_one("SELECT * FROM game_scenarios WHERE id = " + ph(), (scenario_id,))
+    return ok(scenario, "情景更新成功")
+
+
+@api.route('/scenarios/<int:scenario_id>', methods=['DELETE'])
+def delete_scenario(scenario_id):
+    """删除假设情景"""
+    scenario = query_one("SELECT * FROM game_scenarios WHERE id = " + ph(), (scenario_id,))
+    if not scenario:
+        return fail("情景不存在", 404)
+    execute_write(f"DELETE FROM game_scenarios WHERE id = {ph()}", (scenario_id,))
+    return ok(message="情景删除成功")
+
+
+@api.route('/scenarios/<int:scenario_id>/assignments', methods=['POST'])
+def set_scenario_assignment(scenario_id):
+    """设置情景中某个玩家的假设身份或阵营（存在则更新，不存在则创建）
+    支持两种模式：
+    1. 具体身份：role_id（如预言家、女巫）
+    2. 阵营假设：camp（好人/狼人），role_id为空
+    """
+    scenario = query_one("SELECT * FROM game_scenarios WHERE id = " + ph(), (scenario_id,))
+    if not scenario:
+        return fail("情景不存在", 404)
+    data = request.get_json() or {}
+    player_id = data.get('player_id')
+    role_id = data.get('role_id')
+    camp = data.get('camp')
+    confidence = data.get('confidence', 0.9)
+    if not player_id:
+        return fail("玩家ID不能为空")
+    if not role_id and not camp:
+        return fail("请选择假设身份或假设阵营")
+    # 检查是否已存在
+    existing = query_one(
+        f"SELECT * FROM scenario_assignments WHERE scenario_id={ph()} AND player_id={ph()}",
+        (scenario_id, player_id)
+    )
+    if existing:
+        execute_write(
+            f"UPDATE scenario_assignments SET role_id={ph()}, camp={ph()}, confidence={ph()} WHERE id={ph()}",
+            (role_id, camp, confidence, existing['id'])
+        )
+        assignment_id = existing['id']
+    else:
+        assignment_id = execute_write(
+            f"INSERT INTO scenario_assignments (scenario_id, player_id, role_id, camp, confidence) VALUES ({ph()}, {ph()}, {ph()}, {ph()}, {ph()})",
+            (scenario_id, player_id, role_id, camp, confidence)
+        )
+    assignment = query_one(
+        f"""SELECT sa.*, p.name as player_name, r.name as role_name, r.camp as role_camp
+            FROM scenario_assignments sa
+            JOIN players p ON sa.player_id = p.id
+            LEFT JOIN roles r ON sa.role_id = r.id
+            WHERE sa.id = {ph()}""",
+        (assignment_id,)
+    )
+    return ok(assignment, "假设身份设置成功")
+
+
+@api.route('/scenario_assignments/<int:assignment_id>', methods=['DELETE'])
+def delete_scenario_assignment(assignment_id):
+    """删除情景中的假设身份"""
+    assignment = query_one("SELECT * FROM scenario_assignments WHERE id = " + ph(), (assignment_id,))
+    if not assignment:
+        return fail("假设身份不存在", 404)
+    execute_write(f"DELETE FROM scenario_assignments WHERE id = {ph()}", (assignment_id,))
+    return ok(message="假设身份删除成功")
+
+
+@api.route('/games/<int:game_id>/invariant_players', methods=['GET'])
+def get_invariant_players(game_id):
+    """获取铁狼/铁好人列表（在所有情景下概率都>阈值的玩家）
+
+    铁狼：在所有情景下，狼人阵营概率都>90%的玩家
+    铁好人：在所有情景下，好人阵营概率都>90%的玩家
+
+    支持查询参数:
+        threshold: 概率阈值，默认0.9（90%）
+    """
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+
+    threshold = request.args.get('threshold', default=0.9, type=float)
+
+    # 获取所有情景
+    scenarios = query_all(
+        f"SELECT * FROM game_scenarios WHERE game_id = {ph()} AND is_active = 1 ORDER BY sort_order, id",
+        (game_id,)
+    )
+
+    if not scenarios:
+        return ok({
+            "iron_wolves": [],
+            "iron_goods": [],
+            "message": "暂无情景，无法识别铁狼/铁好人"
+        })
+
+    # 获取身份的阵营映射
+    roles = query_all("SELECT id, name, camp FROM roles")
+    role_camp = {r['id']: r['camp'] for r in roles}
+
+    # 对每个情景计算预测，收集每个玩家在各情景下的阵营概率
+    player_scenario_probs = {}  # {player_id: {scenario_id: {"狼人": prob, "好人": prob, "第三方": prob}}}
+
+    for scenario in scenarios:
+        results = predict_game(game_id, scenario_id=scenario['id'])
+        for player_id, data in results.items():
+            if player_id not in player_scenario_probs:
+                player_scenario_probs[player_id] = {}
+            # 计算该玩家在该情景下的各阵营概率
+            camp_probs = {"狼人": 0.0, "好人": 0.0, "第三方": 0.0}
+            for role_id, prob in data['probabilities'].items():
+                camp = role_camp.get(role_id, "")
+                if camp in camp_probs:
+                    camp_probs[camp] += prob
+            player_scenario_probs[player_id][scenario['id']] = camp_probs
+
+    # 识别铁狼：在所有情景下狼人概率都>threshold
+    iron_wolves = []
+    # 识别铁好人：在所有情景下好人概率都>threshold
+    iron_goods = []
+
+    for player_id, scenario_probs in player_scenario_probs.items():
+        if len(scenario_probs) < len(scenarios):
+            continue  # 缺少某些情景的预测，跳过
+
+        # 获取玩家名称
+        player_name = ""
+        gp = query_one(
+            f"SELECT p.name FROM game_players gp JOIN players p ON gp.player_id = p.id WHERE gp.game_id={ph()} AND gp.player_id={ph()}",
+            (game_id, player_id)
+        )
+        if gp:
+            player_name = gp['name']
+
+        # 检查是否所有情景下狼人概率都>threshold
+        all_wolf = all(probs["狼人"] >= threshold for probs in scenario_probs.values())
+        if all_wolf:
+            min_wolf_prob = min(probs["狼人"] for probs in scenario_probs.values())
+            iron_wolves.append({
+                "player_id": player_id,
+                "player_name": player_name,
+                "min_wolf_probability": round(min_wolf_prob, 4),
+                "scenario_count": len(scenarios)
+            })
+
+        # 检查是否所有情景下好人概率都>threshold
+        all_good = all(probs["好人"] >= threshold for probs in scenario_probs.values())
+        if all_good:
+            min_good_prob = min(probs["好人"] for probs in scenario_probs.values())
+            iron_goods.append({
+                "player_id": player_id,
+                "player_name": player_name,
+                "min_good_probability": round(min_good_prob, 4),
+                "scenario_count": len(scenarios)
+            })
+
+    return ok({
+        "iron_wolves": iron_wolves,
+        "iron_goods": iron_goods,
+        "threshold": threshold,
+        "scenario_count": len(scenarios)
+    })
+
+
+# ============================================================
 # 7. 身份预测（贝叶斯算法）
 # ============================================================
 @api.route('/games/<int:game_id>/predictions', methods=['GET'])
 def get_game_predictions(game_id):
-    """获取某局所有玩家的身份概率预测（实时计算）"""
+    """获取某局所有玩家的身份概率预测（实时计算）
+
+    支持查询参数:
+        scenario_id: 假设情景ID（可选）。如果提供，会应用情景中的假设身份
+    """
     game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
     if not game:
         return fail("对局不存在", 404)
+    # 获取情景ID（可选）
+    scenario_id = request.args.get('scenario_id', type=int)
     # 实时计算预测
-    results = predict_game(game_id)
+    results = predict_game(game_id, scenario_id=scenario_id)
     # 格式化输出
     output = []
     for player_id, data in results.items():

@@ -148,6 +148,30 @@ CREATE TABLE IF NOT EXISTS ml_models (
     trained_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 13. 对局假设情景表（多情景推理）
+-- 用于存储用户创建的假设情景，如"假设A是预言家"
+CREATE TABLE IF NOT EXISTS game_scenarios (
+    id          SERIAL PRIMARY KEY,
+    game_id     INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    name        VARCHAR(100) NOT NULL,     -- 情景名称：假设A是预言家、假设B是预言家
+    description TEXT,                        -- 情景描述
+    is_active   BOOLEAN DEFAULT TRUE,       -- 是否启用
+    sort_order  INTEGER DEFAULT 0,          -- 排序
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 14. 情景假设身份分配表
+-- 存储每个情景中，用户假设某些玩家的身份
+CREATE TABLE IF NOT EXISTS scenario_assignments (
+    id            SERIAL PRIMARY KEY,
+    scenario_id   INTEGER NOT NULL REFERENCES game_scenarios(id) ON DELETE CASCADE,
+    player_id     INTEGER NOT NULL REFERENCES players(id),
+    role_id       INTEGER NOT NULL REFERENCES roles(id),   -- 假设的身份
+    confidence    REAL DEFAULT 0.9,                         -- 置信度 0~1（0.9表示90%确定）
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(scenario_id, player_id)                          -- 同一情景下同一玩家只能有一个假设身份
+);
+
 -- ============================================================
 -- 索引（提升查询性能）
 -- ============================================================

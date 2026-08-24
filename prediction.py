@@ -1114,7 +1114,7 @@ def apply_ml_correction(player_id, actor_behaviors, results, role_ids, role_camp
 # ============================================================
 # 主预测函数
 # ============================================================
-def predict_game(game_id):
+def predict_game(game_id, scenario_id=None):
     """主预测函数：根据对局中所有行为，预测每个玩家的身份概率
 
     算法步骤：
@@ -1124,7 +1124,12 @@ def predict_game(game_id):
     4. 获取算法权重 weight(身份,行为)，直接作为相对似然度 P(行为|身份) ∝ weight
     5. 对每个玩家：log后验 = log先验 + Σ log(weight(身份,该玩家的行为))
     6. 归一化得到概率
-    7. 保存到 predictions 表
+    7. 保存到 predictions 表（仅当无scenario_id时）
+
+    参数:
+        game_id: 对局ID
+        scenario_id: 假设情景ID（可选）。如果提供，会应用情景中的假设身份，
+                     且不保存到predictions表（情景预测不覆盖真实预测）
 
     返回:
         {
@@ -1138,6 +1143,20 @@ def predict_game(game_id):
             ...
         }
     """
+    # 加载情景假设身份（如果有）
+    scenario_assignments = {}
+    if scenario_id:
+        assignments = query_all(
+            f"SELECT * FROM scenario_assignments WHERE scenario_id = {ph()}",
+            (scenario_id,)
+        )
+        for a in assignments:
+            scenario_assignments[a['player_id']] = {
+                'role_id': a.get('role_id'),
+                'camp': a.get('camp'),
+                'confidence': a.get('confidence', 0.9)
+            }
+
     # 1. 获取对局玩家
     # 获取对局版型信息（用于策略2：按版型自动调整查验可信度）
     game_info = query_one("SELECT setup_id FROM games WHERE id = " + ph(), (game_id,))
@@ -1371,8 +1390,62 @@ def predict_game(game_id):
         actor_behaviors = behaviors_by_actor.get(player_id, [])
         apply_ml_correction(player_id, actor_behaviors, results, role_ids, role_camps, role_names)
 
-    # 8. 保存预测结果到数据库
-    save_predictions(game_id, results)
+    # 多情景推理：应用情景假设身份或阵营
+    # 对于有假设的玩家：
+    #   - 具体身份假设：将假设身份的概率设为置信度，其他身份按原比例分配剩余概率
+    #   - 阵营假设：将假设阵营的总概率设为置信度，阵营内按原比例分配，其他阵营按原比例分配剩余
+    if scenario_assignments:
+        for player_id, assignment in scenario_assignments.items():
+            if player_id not in results:
+                continue
+            assumed_role_id = assignment.get('role_id')
+            assumed_camp = assignment.get('camp')
+            confidence = assignment['confidence']
+            probs = results[player_id]['probabilities']
+
+            if assumed_role_id and assumed_role_id in probs:
+                # 具体身份假设
+                other_total = sum(p for rid, p in probs.items() if rid != assumed_role_id)
+                if other_total > 0:
+                    scale = (1 - confidence) / other_total
+                    for rid in probs:
+                        if rid != assumed_role_id:
+                            probs[rid] = round(probs[rid] * scale, 6)
+                    probs[assumed_role_id] = round(confidence, 6)
+                else:
+                    probs[assumed_role_id] = 1.0
+            elif assumed_camp:
+                # 阵营假设
+                camp_role_ids = [rid for rid, camp in role_camps.items() if camp == assumed_camp]
+                other_role_ids = [rid for rid, camp in role_camps.items() if camp != assumed_camp]
+                camp_total = sum(probs.get(rid, 0) for rid in camp_role_ids)
+                other_total = sum(probs.get(rid, 0) for rid in other_role_ids)
+
+                if camp_total > 0 and other_total > 0:
+                    # 阵营内按原比例分配confidence
+                    camp_scale = confidence / camp_total
+                    for rid in camp_role_ids:
+                        probs[rid] = round(probs.get(rid, 0) * camp_scale, 6)
+                    # 其他阵营按原比例分配(1-confidence)
+                    other_scale = (1 - confidence) / other_total
+                    for rid in other_role_ids:
+                        probs[rid] = round(probs.get(rid, 0) * other_scale, 6)
+                elif camp_total > 0:
+                    # 只有假设阵营有概率，直接设为1
+                    for rid in camp_role_ids:
+                        probs[rid] = round(probs.get(rid, 0) / camp_total, 6) if camp_total > 0 else 0
+                # 如果camp_total为0，保持原概率不变（无法应用假设）
+
+            # 重新找出最高概率身份
+            top_role_id = max(probs, key=probs.get)
+            results[player_id]['top_role_id'] = top_role_id
+            results[player_id]['top_role_name'] = role_names.get(top_role_id, "")
+            results[player_id]['top_probability'] = round(probs[top_role_id], 6)
+            results[player_id]['probabilities'] = probs
+
+    # 8. 保存预测结果到数据库（仅当无scenario_id时，情景预测不覆盖真实预测）
+    if not scenario_id:
+        save_predictions(game_id, results)
 
     return results
 
