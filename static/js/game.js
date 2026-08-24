@@ -149,6 +149,9 @@ async function loadPredictions() {
 
     // 加载预言家查验推导信息
     await loadProphetInference();
+
+    // 加载逻辑一致性与视角分析
+    await loadLogicAnalysis();
 }
 
 // 渲染玩家书签列表
@@ -182,11 +185,38 @@ function renderPlayerBookmarks() {
     container.innerHTML = html;
 }
 
-// 切换选中玩家
+// 切换选中玩家（点击玩家显示预测结果覆盖层）
 function selectPlayer(playerId) {
+    // 如果点击的是当前已选中的玩家，则隐藏覆盖层
+    if (selectedPlayerId === playerId) {
+        hidePredictionCard();
+        return;
+    }
+    // 否则显示该玩家的预测结果，并显示覆盖层
     selectedPlayerId = playerId;
     renderPlayerBookmarks();
     renderSelectedPlayerPrediction();
+    // 显示预测结果覆盖层
+    showPredictionOverlay();
+}
+
+// 显示预测结果覆盖层
+function showPredictionOverlay() {
+    const overlay = document.getElementById('prediction-overlay');
+    if (overlay) overlay.classList.add('show');
+}
+
+// 隐藏预测结果覆盖层
+function hidePredictionOverlay() {
+    const overlay = document.getElementById('prediction-overlay');
+    if (overlay) overlay.classList.remove('show');
+}
+
+// 隐藏预测结果卡片（关闭覆盖层）
+function hidePredictionCard() {
+    selectedPlayerId = null;
+    renderPlayerBookmarks();
+    hidePredictionOverlay();
 }
 
 // 从对局移除玩家
@@ -213,11 +243,9 @@ function renderSelectedPlayerPrediction() {
 
     const p = predictions.find(x => x.player_id === selectedPlayerId);
     if (!p) {
-        card.style.display = 'none';
         return;
     }
 
-    card.style.display = 'block';
     const seat = gamePlayers.find(gp => gp.player_id === p.player_id)?.seat_number;
     const seatLabel = seat ? `${seat}号 ` : '';
     nameEl.textContent = `${seatLabel}${p.player_name} 的身份预测`;
@@ -1565,4 +1593,88 @@ async function saveBehaviorEdit() {
             renderBehaviors(gameData.behaviors || []);
         }
     }
+}
+
+
+// ============================================================
+// 逻辑一致性与视角分析
+// ============================================================
+
+async function loadLogicAnalysis() {
+    const result = await api('GET', '/games/' + gameId + '/logic_analysis');
+    if (result && result.data) {
+        renderLogicAnalysis(result.data);
+    }
+}
+
+function renderLogicAnalysis(data) {
+    const banner = document.getElementById('logic-analysis-banner');
+    const content = document.getElementById('logic-analysis-content');
+    const summary = document.getElementById('logic-analysis-summary');
+
+    if (!banner || !content) return;
+
+    const contradictions = data.contradictions || [];
+    const information_leaks = data.information_leaks || [];
+    const logic_chains = data.logic_chains || [];
+    const summary_data = data.summary || {};
+
+    const total = summary_data.total_issues || 0;
+
+    banner.style.display = 'block';
+    if (total === 0) {
+        summary.textContent = '未检测到明显问题';
+        content.innerHTML = '<div style="padding:8px;color:#22c55e;font-size:13px;">✅ 当前未检测到立场矛盾、信息量溢出或可疑逻辑链条</div>';
+        return;
+    }
+
+    summary.textContent = `共发现 ${total} 个问题（高风险 ${summary_data.high_severity || 0} 个）`;
+
+    let html = '';
+
+    // 立场矛盾
+    if (contradictions.length > 0) {
+        html += '<div style="margin-bottom:12px;">';
+        html += '<div style="font-weight:600;color:#ef4444;margin-bottom:6px;">⚠️ 立场矛盾（' + contradictions.length + '）</div>';
+        contradictions.forEach(c => {
+            const severityColor = c.severity === 'high' ? '#ef4444' : '#f59e0b';
+            html += '<div style="padding:8px;background:rgba(239,68,68,0.08);border-radius:6px;margin-bottom:6px;border-left:3px solid ' + severityColor + ';">';
+            html += '<div style="font-size:13px;">' + escapeHtml(c.description) + '</div>';
+            html += '<div style="font-size:11px;color:#94a3b8;margin-top:4px;">第' + c.round + '轮 ' + (c.phase || '') + ' · ' + c.severity + '</div>';
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    // 信息量溢出
+    if (information_leaks.length > 0) {
+        html += '<div style="margin-bottom:12px;">';
+        html += '<div style="font-weight:600;color:#a855f7;margin-bottom:6px;">👁️ 信息量溢出/开视角（' + information_leaks.length + '）</div>';
+        information_leaks.forEach(l => {
+            const severityColor = l.severity === 'high' ? '#ef4444' : '#f59e0b';
+            html += '<div style="padding:8px;background:rgba(168,85,247,0.08);border-radius:6px;margin-bottom:6px;border-left:3px solid ' + severityColor + ';">';
+            html += '<div style="font-size:13px;">' + escapeHtml(l.description) + '</div>';
+            html += '<div style="font-size:11px;color:#94a3b8;margin-top:4px;">第' + l.round + '轮 ' + (l.phase || '') + ' · ' + l.severity + '</div>';
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    // 逻辑链条
+    if (logic_chains.length > 0) {
+        html += '<div>';
+        html += '<div style="font-weight:600;color:#06b6d4;margin-bottom:6px;">🔗 可疑逻辑链条（' + logic_chains.length + '）</div>';
+        logic_chains.forEach(c => {
+            const severityColor = c.severity === 'high' ? '#ef4444' : '#f59e0b';
+            html += '<div style="padding:8px;background:rgba(6,182,212,0.08);border-radius:6px;margin-bottom:6px;border-left:3px solid ' + severityColor + ';">';
+            html += '<div style="font-size:13px;">' + escapeHtml(c.description) + '</div>';
+            if (c.suspect_name) {
+                html += '<div style="font-size:12px;color:#f59e0b;margin-top:4px;">⚠️ 重点怀疑：' + escapeHtml(c.suspect_name) + '</div>';
+            }
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    content.innerHTML = html;
 }

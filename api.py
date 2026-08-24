@@ -8,6 +8,7 @@ from prediction import predict_game, get_predictions, update_weights_from_game, 
 from relationship import extract_relationships, get_relationship_graph, backtrack_inference, propagate_probabilities
 from game_flow import get_current_phase, advance_phase, wolf_self_explode, set_phase, init_game_phase
 from prophet_inference import get_prophet_claims
+from logic_analysis import analyze_game_logic
 
 api = Blueprint('api', __name__, url_prefix='/api')
 
@@ -1265,3 +1266,16 @@ def get_prophet_inference(game_id):
         'chains': chains,
         'count': len(prophet_claims)
     })
+
+
+# ============================================================
+# 12. 逻辑一致性与视角分析
+# ============================================================
+@api.route('/games/<int:game_id>/logic_analysis', methods=['GET'])
+def get_logic_analysis(game_id):
+    """获取对局的逻辑一致性与视角分析结果"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    result = analyze_game_logic(game_id)
+    return ok(result)

@@ -25,32 +25,48 @@
         </div>
     </div>
 
-    <!-- 右侧：选中玩家预测结果 + 行为录入 + 行为记录 -->
-    <div>
-        <!-- 选中玩家的预测结果 -->
-        <div class="card" id="selected-player-prediction-card" style="display:none;">
-            <div class="card-title" style="flex-wrap:wrap;gap:8px;">
-                <span id="selected-player-name">玩家预测结果</span>
-                <span id="selected-player-top-role" class="badge badge-info"></span>
-                <button class="btn btn-primary btn-sm" onclick="showConfirmIdentityModal()" style="margin-left:auto;">✅ 确认身份</button>
-            </div>
-            <!-- 情景切换标签 -->
-            <div class="scenario-tabs" id="scenario-tabs" style="display:none;margin-bottom:12px;">
-                <div class="scenario-tab active" data-scenario-id="" onclick="switchScenario('')">综合预测</div>
-            </div>
-            <!-- 铁狼/铁好人提示 -->
-            <div id="invariant-players-banner" style="display:none;margin-bottom:12px;"></div>
-            <!-- 预言家查验推导 -->
-            <div id="prophet-inference-banner" style="display:none;margin-bottom:12px;padding:12px;background:rgba(168,85,247,0.08);border-radius:8px;border:1px solid rgba(168,85,247,0.3);">
-                <div style="font-weight:600;color:#a855f7;margin-bottom:8px;">🔮 预言家查验推导</div>
-                <div id="prophet-inference-content"></div>
-                <!-- 矛盾提示 -->
-                <div id="prophet-contradictions" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid rgba(168,85,247,0.2);"></div>
-                <!-- 查验链 -->
-                <div id="prophet-chains" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid rgba(168,85,247,0.2);"></div>
-            </div>
-            <div id="selected-player-prediction">
-                <div class="empty-state"><p>请从左侧选择玩家查看预测</p></div>
+    <!-- 右侧：行为录入 + 行为记录 + 预测结果覆盖层 -->
+    <div style="position:relative;">
+
+        <!-- 预测结果覆盖层（点击玩家时显示，覆盖行为录入和行为记录） -->
+        <div class="prediction-overlay" id="prediction-overlay">
+            <div class="prediction-overlay-content">
+                <div class="card" id="selected-player-prediction-card">
+                    <div class="card-title" style="flex-wrap:wrap;gap:8px;">
+                        <span id="selected-player-name">玩家预测结果</span>
+                        <span id="selected-player-top-role" class="badge badge-info"></span>
+                        <button class="btn btn-secondary btn-sm" onclick="hidePredictionCard()" style="margin-left:auto;">✕ 关闭</button>
+                    </div>
+                    <!-- 情景切换标签 -->
+                    <div class="scenario-tabs" id="scenario-tabs" style="display:none;margin-bottom:12px;">
+                        <div class="scenario-tab active" data-scenario-id="" onclick="switchScenario('')">综合预测</div>
+                    </div>
+                    <!-- 铁狼/铁好人提示 -->
+                    <div id="invariant-players-banner" style="display:none;margin-bottom:12px;"></div>
+                    <!-- 预言家查验推导 -->
+                    <div id="prophet-inference-banner" style="display:none;margin-bottom:12px;padding:12px;background:rgba(168,85,247,0.08);border-radius:8px;border:1px solid rgba(168,85,247,0.3);">
+                        <div style="font-weight:600;color:#a855f7;margin-bottom:8px;">🔮 预言家查验推导</div>
+                        <div id="prophet-inference-content"></div>
+                        <!-- 矛盾提示 -->
+                        <div id="prophet-contradictions" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid rgba(168,85,247,0.2);"></div>
+                        <!-- 查验链 -->
+                        <div id="prophet-chains" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid rgba(168,85,247,0.2);"></div>
+                    </div>
+                    <!-- 逻辑一致性与视角分析 -->
+                    <div id="logic-analysis-banner" style="display:none;margin-bottom:12px;padding:12px;background:rgba(245,158,11,0.08);border-radius:8px;border:1px solid rgba(245,158,11,0.3);">
+                        <div style="font-weight:600;color:#f59e0b;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+                            <span>🔍 逻辑一致性与视角分析</span>
+                            <span id="logic-analysis-summary" style="font-size:12px;color:#f59e0b;"></span>
+                        </div>
+                        <div id="logic-analysis-content"></div>
+                    </div>
+                    <div id="selected-player-prediction">
+                        <div class="empty-state"><p>请从左侧选择玩家查看预测</p></div>
+                    </div>
+                    <div style="margin-top:12px;text-align:right;">
+                        <button class="btn btn-primary btn-sm" onclick="showConfirmIdentityModal()">✅ 确认身份</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -465,6 +481,7 @@
 </div>
 
 <input type="hidden" id="game-id" value="{{ game_id }}">
+
 {% endblock %}
 {% block scripts %}
 <script src="/static/js/game.js"></script>
