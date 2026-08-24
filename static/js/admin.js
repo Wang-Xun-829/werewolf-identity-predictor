@@ -129,8 +129,11 @@ async function loadActions() {
 
     function renderActionRow(a, level) {
         const indent = level > 0 ? '&nbsp;&nbsp;&nbsp;&nbsp;'.repeat(level) + '└ ' : '';
-        const levelLabel = level === 0 ? '一级' : level === 1 ? '二级' : '三级';
-        const levelClass = level === 0 ? 'badge-info' : level === 1 ? 'badge-good' : 'badge-third';
+        // 支持任意级别：一级、二级、三级、四级...
+        const levelNames = ['一级', '二级', '三级', '四级', '五级', '六级', '七级', '八级'];
+        const levelLabel = level < levelNames.length ? levelNames[level] : `${level + 1}级`;
+        // 不同级别不同颜色
+        const levelClass = level <= 5 ? `badge-level-${level}` : 'badge-level-other';
         html += `<tr class="${level > 0 ? 'child-action-row' : ''}">
             <td>${a.id}</td>
             <td>${indent}<strong>${escapeHtml(a.name)}</strong></td>
@@ -152,17 +155,44 @@ async function loadActions() {
     container.innerHTML = html;
 }
 
-// 填充父行为下拉选择
+// 填充父行为下拉选择（支持任意级别，排除自己和自己的后代避免循环引用）
 function populateParentSelect(excludeId) {
     const select = document.getElementById('action-parent');
     select.innerHTML = '<option value="">无（一级行为）</option>';
-    // 只显示一级行为作为父行为（目前支持2级，如需3级可放开）
+
+    // 构建id到行为的映射，用于查找后代
+    const actionMap = {};
+    (window._allActions || []).forEach(a => { actionMap[a.id] = a; });
+
+    // 查找某个行为的所有后代（递归）
+    function getDescendants(parentId) {
+        const descendants = [];
+        const children = (window._allActions || []).filter(a => a.parent_id === parentId);
+        children.forEach(child => {
+            descendants.push(child.id);
+            descendants.push(...getDescendants(child.id));
+        });
+        return descendants;
+    }
+
+    // 需要排除的ID：自己 + 自己的所有后代
+    const excludeIds = new Set();
+    if (excludeId) {
+        excludeIds.add(excludeId);
+        getDescendants(excludeId).forEach(id => excludeIds.add(id));
+    }
+
+    // 显示所有行为（按层级缩进展示），排除自己和后代
+    function renderOption(a, level) {
+        if (excludeIds.has(a.id)) return;
+        const indent = level > 0 ? '&nbsp;&nbsp;'.repeat(level) + '└ ' : '';
+        select.innerHTML += `<option value="${a.id}">${indent}${escapeHtml(a.name)}</option>`;
+        const children = (window._allActions || []).filter(x => x.parent_id === a.id);
+        children.forEach(child => renderOption(child, level + 1));
+    }
+
     const rootActions = (window._allActions || []).filter(a => !a.parent_id);
-    rootActions.forEach(a => {
-        if (a.id !== excludeId) {
-            select.innerHTML += `<option value="${a.id}">${escapeHtml(a.name)}</option>`;
-        }
-    });
+    rootActions.forEach(a => renderOption(a, 0));
 }
 
 function showActionModal() {

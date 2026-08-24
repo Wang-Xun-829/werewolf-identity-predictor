@@ -18,6 +18,26 @@ app.register_blueprint(api_blueprint)
 
 
 # ============================================================
+# 全局错误处理器（确保API异常返回JSON，而不是HTML错误页）
+# ============================================================
+@app.errorhandler(Exception)
+def handle_exception(e):
+    import traceback
+    error_detail = traceback.format_exc()
+    print(f"[全局异常] {error_detail}")
+    # 如果是API请求，返回JSON
+    from flask import request
+    if request.path.startswith('/api/'):
+        return jsonify({
+            "success": False,
+            "message": f"服务器错误: {str(e)}",
+            "error_type": type(e).__name__
+        }), 500
+    # 其他请求返回默认错误页
+    return e
+
+
+# ============================================================
 # 页面路由
 # ============================================================
 @app.route("/")

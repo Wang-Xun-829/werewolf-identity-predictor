@@ -215,7 +215,10 @@ def list_actions():
 @api.route('/actions', methods=['POST'])
 def create_action():
     """新增行为（支持指定父行为，实现分级）"""
+    import sys
+    print("[DEBUG] create_action 被调用", flush=True)
     data = request.get_json() or {}
+    print(f"[DEBUG] 请求数据: {data}", flush=True)
     name = data.get('name', '').strip()
     description = data.get('description', '')
     default_weight = data.get('default_weight', 1.0)
@@ -224,12 +227,20 @@ def create_action():
         return fail("行为名称不能为空")
     if parent_id:
         parent_id = int(parent_id)
-    new_id = execute_write(
-        f"INSERT INTO actions (name, description, default_weight, parent_id) VALUES ({ph()}, {ph()}, {ph()}, {ph()})",
-        (name, description, default_weight, parent_id)
-    )
-    action = query_one("SELECT * FROM actions WHERE id = " + ph(), (new_id,))
-    return ok(action, "行为创建成功")
+    print(f"[DEBUG] 准备插入: name={name}, parent_id={parent_id}", flush=True)
+    try:
+        new_id = execute_write(
+            f"INSERT INTO actions (name, description, default_weight, parent_id) VALUES ({ph()}, {ph()}, {ph()}, {ph()})",
+            (name, description, default_weight, parent_id)
+        )
+        print(f"[DEBUG] 插入成功, new_id={new_id}", flush=True)
+        action = query_one("SELECT * FROM actions WHERE id = " + ph(), (new_id,))
+        return ok(action, "行为创建成功")
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"[创建行为错误] {error_detail}", flush=True)
+        return fail(f"创建行为失败: {str(e)}")
 
 
 @api.route('/actions/<int:action_id>', methods=['PUT'])

@@ -433,76 +433,150 @@ function hideModal(id) {
 }
 
 // ============================================================
-// 行为多选标签（Multi-Select Tags）
+// 行为多选标签（逐级展开选择）
 // ============================================================
 let selectedActionIds = [];  // 已选中的行为ID列表
+let currentActionPath = [];  // 当前导航路径，存储行为ID数组（如[一级ID, 二级ID]）
+let actionMultiSelectInitialized = false;  // 标记是否已初始化（避免重复绑定事件）
 
 function initActionMultiSelect() {
     const searchInput = document.getElementById('behavior-action-search');
     const tagsGrid = document.getElementById('action-tags-grid');
     if (!searchInput || !tagsGrid) return;
 
-    // 输入时实时过滤
-    searchInput.addEventListener('input', (e) => {
-        renderActionTags(e.target.value.trim().toLowerCase());
-    });
+    // 只在第一次初始化时绑定事件，避免重复绑定
+    if (!actionMultiSelectInitialized) {
+        // 输入时实时过滤（搜索时重置路径，显示所有匹配结果）
+        searchInput.addEventListener('input', (e) => {
+            const keyword = e.target.value.trim().toLowerCase();
+            if (keyword) {
+                currentActionPath = [];  // 搜索时回到根目录
+            }
+            renderActionTags(keyword);
+        });
 
-    // 事件委托：点击标签选中/取消选中
-    tagsGrid.addEventListener('click', (e) => {
-        const tag = e.target.closest('.action-tag');
-        if (!tag) return;
-        const id = parseInt(tag.dataset.id);
-        toggleAction(id);
-    });
+        // 事件委托：点击标签
+        tagsGrid.addEventListener('click', (e) => {
+            // 点击展开箭头
+            const expandBtn = e.target.closest('.action-expand-btn');
+            if (expandBtn) {
+                e.stopPropagation();
+                const actionId = parseInt(expandBtn.dataset.id);
+                currentActionPath.push(actionId);
+                document.getElementById('behavior-action-search').value = '';
+                renderActionTags('');
+                return;
+            }
+            // 点击返回按钮
+            const backBtn = e.target.closest('.action-back-btn');
+            if (backBtn) {
+                e.stopPropagation();
+                currentActionPath.pop();
+                renderActionTags('');
+                return;
+            }
+            // 点击面包屑
+            const crumb = e.target.closest('.breadcrumb-item');
+            if (crumb) {
+                e.stopPropagation();
+                const level = parseInt(crumb.dataset.level);
+                currentActionPath = currentActionPath.slice(0, level);
+                renderActionTags('');
+                return;
+            }
+            // 点击行为标签 = 选择/取消选择
+            const tag = e.target.closest('.action-tag');
+            if (!tag) return;
+            const id = parseInt(tag.dataset.id);
+            toggleAction(id);
+        });
 
-    // 初始渲染
-    renderActionTags('');
+        actionMultiSelectInitialized = true;
+    }
+
+    // 每次都重新渲染标签（保留当前导航路径和选中状态）
+    const currentKeyword = searchInput.value.trim().toLowerCase();
+    renderActionTags(currentKeyword);
 }
 
 function renderActionTags(keyword) {
     const grid = document.getElementById('action-tags-grid');
-    // 过滤：匹配行为名称或描述
-    const filtered = keyword
-        ? allActions.filter(a =>
+    if (!grid) return;
+
+    // 搜索模式：显示所有匹配的行为（不分级）
+    if (keyword) {
+        const filtered = allActions.filter(a =>
             a.name.toLowerCase().includes(keyword) ||
             (a.description && a.description.toLowerCase().includes(keyword))
-        )
-        : allActions;
-
-    if (filtered.length === 0) {
-        grid.innerHTML = '<div class="empty-state"><p>未找到匹配的行为</p></div>';
+        );
+        if (filtered.length === 0) {
+            grid.innerHTML = '<div class="empty-state"><p>未找到匹配的行为</p></div>';
+            updateSelectedActionsInfo();
+            return;
+        }
+        let html = '';
+        filtered.forEach(a => {
+            html += renderActionTagHtml(a, 0, false);
+        });
+        grid.innerHTML = html;
+        updateSelectedActionsInfo();
         return;
     }
 
-    // 构建父子关系，树形展示
-    const parentToChildren = {};
-    const rootActions = [];
-    filtered.forEach(a => {
-        if (a.parent_id && filtered.find(x => x.id === a.parent_id)) {
-            if (!parentToChildren[a.parent_id]) parentToChildren[a.parent_id] = [];
-            parentToChildren[a.parent_id].push(a);
-        } else {
-            rootActions.push(a);
-        }
-    });
+    // 逐级导航模式
+    const currentParentId = currentActionPath.length > 0
+        ? currentActionPath[currentActionPath.length - 1]
+        : null;
 
-    let html = '';
-    function renderActionTag(a, level) {
-        const isSelected = selectedActionIds.includes(a.id);
-        const hasChildren = parentToChildren[a.id] && parentToChildren[a.id].length > 0;
-        const indent = level > 0 ? 'style="margin-left:' + (level * 16) + 'px;"' : '';
-        html += `<div class="action-tag ${isSelected ? 'selected' : ''} ${level > 0 ? 'child-tag' : ''}" data-id="${a.id}" ${indent}>
-            <span class="action-tag-name">${hasChildren ? '📁 ' : ''}${escapeHtml(a.name)}</span>
-            ${isSelected ? '<span class="action-tag-check">✓</span>' : ''}
-        </div>`;
-        // 递归渲染子行为
-        const children = parentToChildren[a.id] || [];
-        children.forEach(child => renderActionTag(child, level + 1));
+    // 获取当前级别的行为
+    const currentActions = allActions.filter(a => a.parent_id === currentParentId);
+
+    if (currentActions.length === 0 && currentParentId === null) {
+        grid.innerHTML = '<div class="empty-state"><p>暂无行为</p></div>';
+        updateSelectedActionsInfo();
+        return;
     }
 
-    rootActions.forEach(a => renderActionTag(a, 0));
+    let html = '';
+
+    // 面包屑导航（非根目录时显示）
+    if (currentActionPath.length > 0) {
+        html += '<div class="action-breadcrumb">';
+        html += '<span class="action-back-btn" title="返回上一级">← 返回</span>';
+        html += '<span class="breadcrumb-item" data-level="0">📁 根目录</span>';
+        currentActionPath.forEach((actionId, index) => {
+            const action = allActions.find(a => a.id === actionId);
+            if (action) {
+                html += '<span class="breadcrumb-sep">/</span>';
+                html += `<span class="breadcrumb-item" data-level="${index + 1}">${escapeHtml(action.name)}</span>`;
+            }
+        });
+        html += '</div>';
+    }
+
+    // 如果当前目录没有子行为，提示
+    if (currentActions.length === 0) {
+        html += '<div class="empty-state"><p>此目录下暂无子行为</p></div>';
+    } else {
+        // 渲染当前级别的行为
+        currentActions.forEach(a => {
+            const hasChildren = allActions.some(x => x.parent_id === a.id);
+            html += renderActionTagHtml(a, currentActionPath.length, hasChildren);
+        });
+    }
+
     grid.innerHTML = html;
     updateSelectedActionsInfo();
+}
+
+// 渲染单个行为标签的HTML
+function renderActionTagHtml(a, level, hasChildren) {
+    const isSelected = selectedActionIds.includes(a.id);
+    return `<div class="action-tag ${isSelected ? 'selected' : ''} ${level > 0 ? 'child-tag' : ''}" data-id="${a.id}">
+        <span class="action-tag-name">${escapeHtml(a.name)}</span>
+        ${hasChildren ? `<span class="action-expand-btn" data-id="${a.id}" title="查看子行为">›</span>` : ''}
+        ${isSelected ? '<span class="action-tag-check">✓</span>' : ''}
+    </div>`;
 }
 
 function toggleAction(id) {
@@ -518,13 +592,33 @@ function toggleAction(id) {
 function updateSelectedActionsInfo() {
     const info = document.getElementById('selected-actions-info');
     if (info) {
-        info.textContent = `已选 ${selectedActionIds.length} 个行为`;
-        info.className = `selected-actions-info ${selectedActionIds.length > 0 ? 'has-selection' : ''}`;
+        if (selectedActionIds.length === 0) {
+            info.textContent = '未选择行为';
+            info.className = 'selected-actions-info';
+        } else {
+            // 获取已选行为的名称
+            const selectedNames = selectedActionIds.map(id => {
+                const action = allActions.find(a => a.id === id);
+                return action ? action.name : `未知行为(${id})`;
+            });
+            // 显示前3个，超过的用+N表示
+            let displayText;
+            if (selectedNames.length <= 3) {
+                displayText = `已选 ${selectedActionIds.length} 个：${selectedNames.join('、')}`;
+            } else {
+                displayText = `已选 ${selectedActionIds.length} 个：${selectedNames.slice(0, 3).join('、')} 等`;
+            }
+            info.textContent = displayText;
+            info.className = 'selected-actions-info has-selection';
+            // 添加title属性，鼠标悬停显示全部
+            info.title = `已选行为：${selectedNames.join('、')}`;
+        }
     }
 }
 
 function clearSelectedActions() {
     selectedActionIds = [];
+    currentActionPath = [];
     document.getElementById('behavior-action-search').value = '';
     renderActionTags('');
 }
