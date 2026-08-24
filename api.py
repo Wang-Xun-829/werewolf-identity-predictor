@@ -619,7 +619,7 @@ def create_behaviors_batch(game_id):
 
     if not actor_id:
         return fail("行为发起者ID不能为空")
-    if not action_ids or len(action_ids) === 0:
+    if not action_ids or len(action_ids) == 0:
         return fail("请至少选择一个行为")
 
     # 检查对局是否存在
