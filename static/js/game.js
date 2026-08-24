@@ -1809,3 +1809,121 @@ function renderExplanation(data) {
 
     content.innerHTML = html;
 }
+
+
+// ============================================================
+// 机器学习模型
+// ============================================================
+
+async function showMLModal() {
+    const modal = document.getElementById('ml-modal');
+    const content = document.getElementById('ml-content');
+
+    if (!modal || !content) return;
+
+    modal.classList.add('show');
+    content.innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
+
+    // 加载模型状态
+    const result = await api('GET', '/ml/status');
+    if (result && result.data) {
+        renderMLStatus(result.data);
+    } else {
+        content.innerHTML = '<div class="empty-state"><p>加载失败，请重试</p></div>';
+    }
+}
+
+function renderMLStatus(status) {
+    const content = document.getElementById('ml-content');
+    if (!content) return;
+
+    let html = '';
+
+    // 模型状态概览
+    html += '<div style="margin-bottom:20px;">';
+    html += '<div style="font-weight:600;font-size:16px;margin-bottom:12px;color:var(--neon-cyan);">📊 模型状态</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">';
+    html += `<div style="padding:16px;background:rgba(0,240,255,0.05);border-radius:8px;text-align:center;">
+        <div style="font-size:24px;font-weight:700;color:var(--neon-cyan);">${status.game_count}</div>
+        <div style="font-size:12px;color:var(--text-secondary);">已确认对局</div>
+    </div>`;
+    html += `<div style="padding:16px;background:rgba(168,85,247,0.05);border-radius:8px;text-align:center;">
+        <div style="font-size:24px;font-weight:700;color:#a855f7;">${status.identity_count}</div>
+        <div style="font-size:12px;color:var(--text-secondary);">已确认身份</div>
+    </div>`;
+    html += `<div style="padding:16px;background:rgba(34,197,94,0.05);border-radius:8px;text-align:center;">
+        <div style="font-size:24px;font-weight:700;color:#22c55e;">${status.trained_models}</div>
+        <div style="font-size:12px;color:var(--text-secondary);">已训练模型</div>
+    </div>`;
+    html += '</div></div>';
+
+    // 训练状态
+    html += '<div style="margin-bottom:20px;padding:16px;background:rgba(245,158,11,0.05);border-radius:8px;border:1px solid rgba(245,158,11,0.2);">';
+    if (status.ready) {
+        html += '<div style="color:#22c55e;font-weight:600;margin-bottom:8px;">✅ 数据充足，可以训练模型</div>';
+        html += `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">已确认身份 ${status.identity_count} 条，达到最少样本数 ${status.min_samples} 条。点击下方按钮开始训练模型。</div>`;
+        html += '<button class="btn btn-primary" onclick="trainMLModels()" style="width:100%;">🚀 开始训练模型</button>';
+    } else {
+        html += '<div style="color:#f59e0b;font-weight:600;margin-bottom:8px;">⏳ 数据积累中</div>';
+        html += `<div style="font-size:13px;color:var(--text-secondary);">已确认身份 ${status.identity_count} 条，还需要 ${status.min_samples - status.identity_count} 条才能开始训练模型（最少 ${status.min_samples} 条）。</div>`;
+        html += `<div style="font-size:13px;color:var(--text-secondary);margin-top:8px;">在数据不足时，系统会使用贝叶斯算法进行预测。随着数据积累，ML模型会自动学习并优化预测。</div>`;
+    }
+    html += '</div>';
+
+    // 模型说明
+    html += '<div style="margin-bottom:20px;">';
+    html += '<div style="font-weight:600;font-size:16px;margin-bottom:10px;color:#a855f7;">📚 模型说明</div>';
+    html += '<div style="padding:16px;background:rgba(168,85,247,0.05);border-radius:8px;font-size:13px;line-height:1.8;">';
+    html += '<p><strong>算法：</strong>逻辑回归（Logistic Regression）</p>';
+    html += '<p><strong>特征：</strong>从行为记录中提取29个特征，包括行为类型、目标关系、轮次、阶段等</p>';
+    html += '<p><strong>训练：</strong>使用已确认身份的对局数据进行监督学习</p>';
+    html += '<p><strong>预测：</strong>ML模型与贝叶斯算法混合预测（几何平均），数据不足时回退到贝叶斯算法</p>';
+    html += '<p><strong>优化：</strong>每局结束后自动更新模型，预测会越来越准确</p>';
+    html += '</div></div>';
+
+    // 特征列表
+    html += '<div>';
+    html += '<div style="font-weight:600;font-size:16px;margin-bottom:10px;color:#22c55e;">🔍 特征列表</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+    const feature_names = [
+        'jump_prophet(跳预言家)', 'check(查杀)', 'gold(发金水)', 'jump_witch(跳女巫)',
+        'jump_hunter(跳猎人)', 'jump_guard(跳守卫)', 'claim_villager(认平民)', 'vote(投票)',
+        'abstain(弃票)', 'side(站边)', 'hook(倒钩)', 'charge(冲锋)', 'self_explode(自爆)',
+        'shoot(开枪)', 'use_cure(使用解药)', 'use_poison(使用毒药)', 'guard(守护)',
+        'attack(质疑/踩)', 'idle(划水)', 'has_target(有目标)', 'round_1(第一轮)',
+        'round_2(第二轮)', 'round_3_plus(第三轮+)', 'phase_speech(发言阶段)',
+        'phase_vote(投票阶段)', 'attack_count(踩人次数)', 'defend_count(保人次数)',
+        'behavior_count(行为总数)'
+    ];
+    feature_names.forEach(f => {
+        html += `<span style="padding:4px 10px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:12px;font-size:11px;color:#22c55e;">${f}</span>`;
+    });
+    html += '</div></div>';
+
+    content.innerHTML = html;
+}
+
+async function trainMLModels() {
+    const content = document.getElementById('ml-content');
+    if (!content) return;
+
+    content.innerHTML = '<div class="empty-state"><p>训练中，请稍候...</p></div>';
+
+    const result = await api('POST', '/ml/train');
+    if (result && result.data) {
+        // 重新加载状态
+        const statusResult = await api('GET', '/ml/status');
+        if (statusResult && statusResult.data) {
+            renderMLStatus(statusResult.data);
+        }
+
+        // 显示训练结果
+        if (result.data.good && result.data.good.trained) {
+            showToast(`训练完成！好人分类器准确率：${(result.data.good.accuracy * 100).toFixed(1)}%`, 'success');
+        } else if (result.data.good) {
+            showToast(result.data.good.message || '训练失败', 'warning');
+        }
+    } else {
+        content.innerHTML = '<div class="empty-state"><p>训练失败，请重试</p></div>';
+    }
+}

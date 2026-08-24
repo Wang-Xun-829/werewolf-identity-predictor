@@ -64,6 +64,7 @@
                         <div class="empty-state"><p>请从左侧选择玩家查看预测</p></div>
                     </div>
                     <div style="margin-top:12px;text-align:right;display:flex;gap:8px;justify-content:flex-end;">
+                        <button class="btn btn-info btn-sm" onclick="showMLModal()">🤖 机器学习</button>
                         <button class="btn btn-info btn-sm" onclick="showExplanationModal()">📖 详细解释</button>
                         <button class="btn btn-primary btn-sm" onclick="showConfirmIdentityModal()">✅ 确认身份</button>
                     </div>
@@ -489,6 +490,19 @@
             <button class="btn btn-secondary btn-sm" onclick="hideModal('explanation-modal')">✕ 关闭</button>
         </div>
         <div id="explanation-content" style="max-height:65vh;overflow-y:auto;">
+            <div class="empty-state"><p>加载中...</p></div>
+        </div>
+    </div>
+</div>
+
+<!-- 机器学习模型模态框 -->
+<div class="modal-overlay" id="ml-modal">
+    <div class="modal" style="max-width:700px;max-height:85vh;">
+        <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;">
+            <span>🤖 机器学习模型</span>
+            <button class="btn btn-secondary btn-sm" onclick="hideModal('ml-modal')">✕ 关闭</button>
+        </div>
+        <div id="ml-content" style="max-height:65vh;overflow-y:auto;">
             <div class="empty-state"><p>加载中...</p></div>
         </div>
     </div>

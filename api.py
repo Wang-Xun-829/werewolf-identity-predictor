@@ -10,6 +10,7 @@ from game_flow import get_current_phase, advance_phase, wolf_self_explode, set_p
 from prophet_inference import get_prophet_claims
 from logic_analysis import analyze_game_logic
 from explanation import get_player_prediction_explanation
+from ml_model import get_ml_model_status, train_all_models, ml_predict, extract_features, get_all_features
 
 api = Blueprint('api', __name__, url_prefix='/api')
 
@@ -1296,3 +1297,51 @@ def get_prediction_explanation(game_id, player_id):
         return fail("玩家不存在", 404)
     result = get_player_prediction_explanation(game_id, player_id)
     return ok(result)
+
+
+# ============================================================
+# 14. 机器学习模型
+# ============================================================
+@api.route('/ml/status', methods=['GET'])
+def get_ml_status():
+    """获取ML模型状态"""
+    result = get_ml_model_status()
+    return ok(result)
+
+
+@api.route('/ml/train', methods=['POST'])
+def train_ml_models():
+    """训练ML模型"""
+    result = train_all_models()
+    return ok(result, "模型训练完成")
+
+
+@api.route('/games/<int:game_id>/players/<int:player_id>/ml_predict', methods=['GET'])
+def get_ml_prediction(game_id, player_id):
+    """获取某个玩家的ML预测结果"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    player = query_one("SELECT * FROM players WHERE id = " + ph(), (player_id,))
+    if not player:
+        return fail("玩家不存在", 404)
+    result = ml_predict(game_id, player_id)
+    if not result:
+        return fail("ML模型未训练或数据不足", 404)
+    return ok(result)
+
+
+@api.route('/games/<int:game_id>/players/<int:player_id>/features', methods=['GET'])
+def get_player_features(game_id, player_id):
+    """获取某个玩家的特征向量"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    player = query_one("SELECT * FROM players WHERE id = " + ph(), (player_id,))
+    if not player:
+        return fail("玩家不存在", 404)
+    features = extract_features(game_id, player_id)
+    return ok({
+        'features': features,
+        'feature_names': get_all_features()
+    })
