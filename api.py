@@ -9,6 +9,7 @@ from relationship import extract_relationships, get_relationship_graph, backtrac
 from game_flow import get_current_phase, advance_phase, wolf_self_explode, set_phase, init_game_phase
 from prophet_inference import get_prophet_claims
 from logic_analysis import analyze_game_logic
+from explanation import get_player_prediction_explanation
 
 api = Blueprint('api', __name__, url_prefix='/api')
 
@@ -1278,4 +1279,20 @@ def get_logic_analysis(game_id):
     if not game:
         return fail("对局不存在", 404)
     result = analyze_game_logic(game_id)
+    return ok(result)
+
+
+# ============================================================
+# 13. 预测结果可解释性/教学模式
+# ============================================================
+@api.route('/games/<int:game_id>/players/<int:player_id>/explanation', methods=['GET'])
+def get_prediction_explanation(game_id, player_id):
+    """获取某个玩家预测结果的详细解释"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    player = query_one("SELECT * FROM players WHERE id = " + ph(), (player_id,))
+    if not player:
+        return fail("玩家不存在", 404)
+    result = get_player_prediction_explanation(game_id, player_id)
     return ok(result)

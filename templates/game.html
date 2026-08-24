@@ -63,7 +63,8 @@
                     <div id="selected-player-prediction">
                         <div class="empty-state"><p>请从左侧选择玩家查看预测</p></div>
                     </div>
-                    <div style="margin-top:12px;text-align:right;">
+                    <div style="margin-top:12px;text-align:right;display:flex;gap:8px;justify-content:flex-end;">
+                        <button class="btn btn-info btn-sm" onclick="showExplanationModal()">📖 详细解释</button>
                         <button class="btn btn-primary btn-sm" onclick="showConfirmIdentityModal()">✅ 确认身份</button>
                     </div>
                 </div>
@@ -476,6 +477,19 @@
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="hideModal('confirm-identity-modal')">取消</button>
             <button class="btn btn-primary" onclick="submitConfirmIdentity()">确认</button>
+        </div>
+    </div>
+</div>
+
+<!-- 预测结果详细解释模态框 -->
+<div class="modal-overlay" id="explanation-modal">
+    <div class="modal" style="max-width:800px;max-height:85vh;">
+        <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;">
+            <span id="explanation-title">📖 预测结果详细解释</span>
+            <button class="btn btn-secondary btn-sm" onclick="hideModal('explanation-modal')">✕ 关闭</button>
+        </div>
+        <div id="explanation-content" style="max-height:65vh;overflow-y:auto;">
+            <div class="empty-state"><p>加载中...</p></div>
         </div>
     </div>
 </div>

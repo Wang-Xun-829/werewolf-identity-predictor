@@ -1678,3 +1678,134 @@ function renderLogicAnalysis(data) {
 
     content.innerHTML = html;
 }
+
+
+// ============================================================
+// 预测结果详细解释/教学模式
+// ============================================================
+
+async function showExplanationModal() {
+    if (!selectedPlayerId) {
+        showToast('请先选择一个玩家', 'warning');
+        return;
+    }
+
+    const modal = document.getElementById('explanation-modal');
+    const content = document.getElementById('explanation-content');
+    const title = document.getElementById('explanation-title');
+
+    if (!modal || !content) return;
+
+    // 显示模态框
+    modal.classList.add('show');
+    content.innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
+
+    // 获取玩家名称
+    const player = predictions.find(x => x.player_id === selectedPlayerId);
+    if (player) {
+        title.textContent = `📖 ${player.player_name} 的预测结果详细解释`;
+    }
+
+    // 加载解释数据
+    const result = await api('GET', `/games/${gameId}/players/${selectedPlayerId}/explanation`);
+    if (result && result.data) {
+        renderExplanation(result.data);
+    } else {
+        content.innerHTML = '<div class="empty-state"><p>加载失败，请重试</p></div>';
+    }
+}
+
+function renderExplanation(data) {
+    const content = document.getElementById('explanation-content');
+    if (!content) return;
+
+    let html = '';
+
+    // 行为列表
+    const behaviors = data.behaviors || [];
+    if (behaviors.length > 0) {
+        html += '<div style="margin-bottom:20px;">';
+        html += '<div style="font-weight:600;font-size:16px;margin-bottom:10px;color:var(--neon-cyan);">📋 该玩家的行为记录</div>';
+        html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+        behaviors.forEach((b, index) => {
+            const targetText = b.target_name ? ` → ${b.target_name}` : '';
+            const roundText = b.round_number ? `第${b.round_number}轮` : '';
+            const phaseText = b.phase || '';
+            html += `<div style="padding:10px;background:rgba(0,240,255,0.05);border-radius:8px;border-left:3px solid var(--neon-cyan);">`;
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;">`;
+            html += `<span><strong>#${index + 1}</strong> ${escapeHtml(b.action_name)}${targetText}</span>`;
+            html += `<span style="font-size:12px;color:var(--text-secondary);">${roundText} ${phaseText}</span>`;
+            html += `</div>`;
+            if (b.notes) {
+                html += `<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">📝 ${escapeHtml(b.notes)}</div>`;
+            }
+            html += `</div>`;
+        });
+        html += '</div></div>';
+    }
+
+    // 行为影响分析
+    const behavior_analysis = data.behavior_analysis || [];
+    if (behavior_analysis.length > 0) {
+        html += '<div style="margin-bottom:20px;">';
+        html += '<div style="font-weight:600;font-size:16px;margin-bottom:10px;color:#a855f7;">🔍 行为对身份的影响分析</div>';
+        html += '<div style="display:flex;flex-direction:column;gap:10px;">';
+        behavior_analysis.forEach(ba => {
+            const affected = ba.affected_roles || [];
+            if (affected.length === 0) return;
+
+            html += `<div style="padding:12px;background:rgba(168,85,247,0.05);border-radius:8px;border:1px solid rgba(168,85,247,0.2);">`;
+            html += `<div style="font-weight:600;margin-bottom:8px;">${escapeHtml(ba.action_name)} <span style="font-size:12px;color:var(--text-secondary);">(权重: ${ba.weight})</span></div>`;
+            html += `<div style="display:flex;flex-wrap:wrap;gap:6px;">`;
+            affected.forEach(ar => {
+                const effectColor = ar.effect === 'positive' ? '#22c55e' : '#ef4444';
+                const effectText = ar.effect === 'positive' ? '↑ 升高' : '↓ 降低';
+                html += `<span style="padding:4px 10px;background:${effectColor}15;border:1px solid ${effectColor}40;border-radius:12px;font-size:12px;color:${effectColor};">`;
+                html += `${escapeHtml(ar.role_name)} ${effectText}`;
+                html += `</span>`;
+            });
+            html += `</div></div>`;
+        });
+        html += '</div></div>';
+    }
+
+    // 个性化统计
+    if (data.personalized_stats && data.personalized_stats.length > 0) {
+        html += '<div style="margin-bottom:20px;">';
+        html += '<div style="font-weight:600;font-size:16px;margin-bottom:10px;color:#f59e0b;">📊 个性化行为统计</div>';
+        html += '<div style="padding:12px;background:rgba(245,158,11,0.05);border-radius:8px;border:1px solid rgba(245,158,11,0.2);font-size:13px;">';
+        html += '<p>系统已根据该玩家的历史对局数据，学习了其个人行为倾向。同样的行为，对不同玩家可能有不同的身份指示意义。</p>';
+        const total_samples = data.personalized_stats.reduce((sum, s) => sum + (s.sample_count || 0), 0);
+        html += `<p style="margin-top:8px;"><strong>历史数据量：</strong>${total_samples} 条</p>`;
+        html += '</div></div>';
+    }
+
+    // 教学建议
+    const suggestions = data.teaching_suggestions || [];
+    if (suggestions.length > 0) {
+        html += '<div style="margin-bottom:20px;">';
+        html += '<div style="font-weight:600;font-size:16px;margin-bottom:10px;color:#22c55e;">🎓 教学建议</div>';
+        html += '<div style="display:flex;flex-direction:column;gap:10px;">';
+        suggestions.forEach(s => {
+            const typeColors = {
+                'info': '#3b82f6',
+                'warning': '#f59e0b',
+                'success': '#22c55e',
+                'tip': '#a855f7'
+            };
+            const color = typeColors[s.type] || '#3b82f6';
+            html += `<div style="padding:12px;background:${color}10;border-radius:8px;border-left:3px solid ${color};">`;
+            html += `<div style="font-weight:600;color:${color};margin-bottom:4px;">${escapeHtml(s.title)}</div>`;
+            html += `<div style="font-size:13px;line-height:1.6;">${escapeHtml(s.content)}</div>`;
+            html += `</div>`;
+        });
+        html += '</div></div>';
+    }
+
+    // 如果没有任何数据
+    if (behaviors.length === 0 && !data.personalized_stats && suggestions.length === 0) {
+        html += '<div class="empty-state"><p>暂无详细解释数据</p></div>';
+    }
+
+    content.innerHTML = html;
+}
