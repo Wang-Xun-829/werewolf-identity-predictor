@@ -146,6 +146,9 @@ async function loadPredictions() {
 
     // 渲染选中玩家的预测结果
     renderSelectedPlayerPrediction();
+
+    // 加载预言家查验推导信息
+    await loadProphetInference();
 }
 
 // 渲染玩家书签列表
@@ -364,29 +367,15 @@ async function addBehavior() {
     if (result) {
         const count = result.data ? result.data.created_count : selectedActionIds.length;
         showToast(`成功录入 ${count} 条行为`, 'success');
-        // 保存当前行为发起者的选择（重新加载后恢复）
-        const savedActorId = document.getElementById('behavior-actor').value;
-        // 清空表单（保留行为发起者）
+        // 只清空备注，保留行为发起者、行为目标、选中的行为、声明身份、声明阵营
         document.getElementById('behavior-notes').value = '';
-        clearSelectedActions();
-        // 重新加载
-        await loadGame();
-        // 恢复行为发起者的选择
-        if (savedActorId) {
-            setTimeout(() => {
-                const actorSelect = document.getElementById('behavior-actor');
-                if (actorSelect) {
-                    actorSelect.value = savedActorId;
-                    // 触发可搜索下拉框的显示更新
-                    const display = actorSelect.nextElementSibling;
-                    if (display && display.classList.contains('searchable-select')) {
-                        const opt = actorSelect.querySelector(`option[value="${savedActorId}"]`);
-                        if (opt) {
-                            display.querySelector('.searchable-select-display').textContent = opt.textContent;
-                        }
-                    }
-                }
-            }, 100);
+        // 不重新加载整个页面，只刷新预测结果和行为记录
+        await loadPredictions();
+        // 重新加载行为记录
+        const gameResult = await api('GET', '/games/' + gameId);
+        if (gameResult && gameResult.data) {
+            gameData = gameResult.data;
+            renderBehaviors(gameData.behaviors || []);
         }
     }
 }
@@ -780,7 +769,7 @@ function updateSelectedActionsInfo() {
     const info = document.getElementById('selected-actions-info');
     if (info) {
         if (selectedActionIds.length === 0) {
-            info.textContent = '未选择行为';
+            info.innerHTML = '<span>未选择行为</span>';
             info.className = 'selected-actions-info';
         } else {
             // 获取已选行为的名称
@@ -788,19 +777,32 @@ function updateSelectedActionsInfo() {
                 const action = allActions.find(a => a.id === id);
                 return action ? action.name : `未知行为(${id})`;
             });
-            // 显示前3个，超过的用+N表示
-            let displayText;
-            if (selectedNames.length <= 3) {
-                displayText = `已选 ${selectedActionIds.length} 个：${selectedNames.join('、')}`;
-            } else {
-                displayText = `已选 ${selectedActionIds.length} 个：${selectedNames.slice(0, 3).join('、')} 等`;
-            }
-            info.textContent = displayText;
+            // 显示可删除的行为标签
+            let html = '<span style="margin-right:8px;">已选 ' + selectedActionIds.length + ' 个：</span>';
+            selectedActionIds.forEach((id, index) => {
+                const action = allActions.find(a => a.id === id);
+                const name = action ? action.name : `未知行为(${id})`;
+                html += '<span class="selected-action-tag" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;margin:2px;background:rgba(0,240,255,0.15);border:1px solid rgba(0,240,255,0.3);border-radius:12px;font-size:12px;">';
+                html += '<span>' + escapeHtml(name) + '</span>';
+                html += '<span onclick="removeSelectedAction(' + id + ')" style="cursor:pointer;color:#ef4444;font-weight:bold;margin-left:4px;" title="删除">✕</span>';
+                html += '</span>';
+            });
+            // 添加一键清空按钮
+            html += '<span onclick="clearSelectedActions()" style="cursor:pointer;color:#f59e0b;font-size:12px;margin-left:8px;text-decoration:underline;" title="一键清空">清空全部</span>';
+            info.innerHTML = html;
             info.className = 'selected-actions-info has-selection';
             // 添加title属性，鼠标悬停显示全部
-            info.title = `已选行为：${selectedNames.join('、')}`;
+            info.title = '已选行为：' + selectedNames.join('、');
         }
     }
+}
+
+function removeSelectedAction(id) {
+    const index = selectedActionIds.indexOf(id);
+    if (index > -1) {
+        selectedActionIds.splice(index, 1);
+    }
+    renderActionTags(document.getElementById('behavior-action-search').value.trim().toLowerCase());
 }
 
 function clearSelectedActions() {
@@ -1350,5 +1352,95 @@ async function deleteConfirmedIdentity(identityId) {
     if (result) {
         showToast(result.message, 'success');
         await loadPredictions();
+    }
+}
+
+
+// ============================================================
+// 棰勮█瀹舵煡楠屾帹瀵?
+
+// ============================================================
+// 预言家查验推导
+// ============================================================
+
+// 加载预言家查验推导信息
+async function loadProphetInference() {
+    const result = await api('GET', '/games/' + gameId + '/prophet_inference');
+    if (result && result.data) {
+        renderProphetInference(result.data);
+    }
+}
+
+// 渲染预言家查验推导信息
+function renderProphetInference(data) {
+    const banner = document.getElementById('prophet-inference-banner');
+    const content = document.getElementById('prophet-inference-content');
+    const contradictionsDiv = document.getElementById('prophet-contradictions');
+    const chainsDiv = document.getElementById('prophet-chains');
+
+    const prophetClaims = data.prophet_claims || [];
+    const contradictions = data.contradictions || [];
+    const chains = data.chains || [];
+
+    if (!prophetClaims || prophetClaims.length === 0) {
+        banner.style.display = 'none';
+        return;
+    }
+    banner.style.display = 'block';
+
+    // 渲染起跳玩家和查验信息
+    let html = '';
+    prophetClaims.forEach(claim => {
+        const prophetProb = (claim.prophet_probability * 100).toFixed(1);
+        const confirmedBadge = claim.is_confirmed ? '<span class="badge badge-success" style="margin-left:8px;">已确认</span>' : '';
+        html += '<div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(168,85,247,0.2);">';
+        html += '<div style="font-weight:600;margin-bottom:6px;">' + escapeHtml(claim.player_name) + ' （预言家概率 ' + prophetProb + '%）' + confirmedBadge + '</div>';
+        if (claim.checks && claim.checks.length > 0) {
+            claim.checks.forEach(check => {
+                const checkColor = check.check_type === '查杀' ? '#ef4444' : '#22c55e';
+                html += '<div style="font-size:13px;color:#94a3b8;margin-left:12px;">';
+                html += '<span style="color:' + checkColor + ';font-weight:600;">' + check.check_type + '</span> ';
+                html += escapeHtml(check.target_name);
+                if (check.round_number) {
+                    html += ' <span style="color:#64748b;font-size:12px;">（第' + check.round_number + '轮）</span>';
+                }
+                html += '</div>';
+            });
+        } else {
+            html += '<div style="font-size:13px;color:#64748b;margin-left:12px;">暂无查验信息</div>';
+        }
+        html += '</div>';
+    });
+    content.innerHTML = html;
+
+    // 渲染矛盾信息
+    if (contradictions.length > 0) {
+        contradictionsDiv.style.display = 'block';
+        let cHtml = '<div style="font-weight:600;color:#ef4444;margin-bottom:8px;">⚠️ 检测到矛盾</div>';
+        contradictions.forEach(c => {
+            cHtml += '<div style="font-size:13px;color:#fca5a5;margin-bottom:6px;padding:6px 8px;background:rgba(239,68,68,0.1);border-radius:4px;">';
+            cHtml += escapeHtml(c.description);
+            cHtml += '</div>';
+        });
+        contradictionsDiv.innerHTML = cHtml;
+    } else {
+        contradictionsDiv.style.display = 'none';
+    }
+
+    // 渲染查验链
+    if (chains.length > 0) {
+        chainsDiv.style.display = 'block';
+        let chHtml = '<div style="font-weight:600;color:#f59e0b;margin-bottom:8px;">🔗 查验链分析</div>';
+        chains.forEach(ch => {
+            chHtml += '<div style="font-size:13px;color:#fcd34d;margin-bottom:8px;padding:8px;background:rgba(245,158,11,0.1);border-radius:4px;">';
+            chHtml += '<div style="font-weight:600;margin-bottom:4px;">' + escapeHtml(ch.description) + '</div>';
+            if (ch.logic) {
+                chHtml += '<div style="color:#fde68a;font-size:12px;">💡 ' + escapeHtml(ch.logic) + '</div>';
+            }
+            chHtml += '</div>';
+        });
+        chainsDiv.innerHTML = chHtml;
+    } else {
+        chainsDiv.style.display = 'none';
     }
 }

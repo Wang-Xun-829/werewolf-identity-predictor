@@ -7,6 +7,7 @@ from db import DB_TYPE, ph, query_all, query_one, execute_write
 from prediction import predict_game, get_predictions, update_weights_from_game, score_predictions
 from relationship import extract_relationships, get_relationship_graph, backtrack_inference, propagate_probabilities
 from game_flow import get_current_phase, advance_phase, wolf_self_explode, set_phase, init_game_phase
+from prophet_inference import get_prophet_claims
 
 api = Blueprint('api', __name__, url_prefix='/api')
 
@@ -879,6 +880,9 @@ def get_invariant_players(game_id):
     for scenario in scenarios:
         results = predict_game(game_id, scenario_id=scenario['id'])
         for player_id, data in results.items():
+            # 跳过非玩家ID的键（如'_prophet_inference_result'）
+            if isinstance(player_id, str) and player_id.startswith('_'):
+                continue
             if player_id not in player_scenario_probs:
                 player_scenario_probs[player_id] = {}
             # 计算该玩家在该情景下的各阵营概率
@@ -957,6 +961,9 @@ def get_game_predictions(game_id):
     # 格式化输出
     output = []
     for player_id, data in results.items():
+        # 跳过非玩家ID的键（如'_prophet_inference_result'）
+        if isinstance(player_id, str) and player_id.startswith('_'):
+            continue
         # 获取身份名称
         role_names = {}
         roles = query_all("SELECT id, name, camp FROM roles")
@@ -1226,3 +1233,35 @@ def delete_confirmed_identity(identity_id):
         return fail("确认身份不存在", 404)
     execute_write(f"DELETE FROM game_confirmed_identities WHERE id = {ph()}", (identity_id,))
     return ok(message="确认身份已删除")
+
+
+# ============================================================
+# 11. 预言家查验推导
+# ============================================================
+@api.route('/games/<int:game_id>/prophet_inference', methods=['GET'])
+def get_prophet_inference(game_id):
+    """获取对局的预言家查验推导信息"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    prophet_claims = get_prophet_claims(game_id)
+    # 获取预测结果，填充预言家概率
+    predictions = get_predictions(game_id)
+    for claim in prophet_claims:
+        player_id = claim['player_id']
+        if player_id in predictions:
+            probs = predictions[player_id].get('probabilities', {})
+            claim['prophet_probability'] = probs.get(1, 0)
+
+    # 应用唯一性约束
+    from prophet_inference import apply_uniqueness_constraint, detect_contradictions, analyze_check_chains
+    prophet_claims, _ = apply_uniqueness_constraint(prophet_claims)
+    contradictions = detect_contradictions(prophet_claims)
+    chains = analyze_check_chains(prophet_claims)
+
+    return ok({
+        'prophet_claims': prophet_claims,
+        'contradictions': contradictions,
+        'chains': chains,
+        'count': len(prophet_claims)
+    })

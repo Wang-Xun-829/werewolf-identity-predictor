@@ -20,6 +20,7 @@
 import json
 import math
 from db import get_db, DB_TYPE, execute_write, query_all, query_one
+from prophet_inference import get_prophet_claims, apply_prophet_inference, apply_role_uniqueness
 
 # ============================================================
 # 算法超参数（可根据效果调整）
@@ -1494,6 +1495,37 @@ def predict_game(game_id, scenario_id=None):
             results[player_id]['is_confirmed'] = True
             results[player_id]['confirmed_reason'] = ci.get('reason', '')
 
+    # 通用身份唯一性推导：对于所有神职身份（预言家、女巫、猎人、守卫），如果有玩家被确认，其他对跳者大概率是狼
+    try:
+        role_ids_list = list(role_ids)
+        results, role_uniqueness_log = apply_role_uniqueness(
+            results, role_camps, role_ids_list, game_id
+        )
+        if role_uniqueness_log:
+            results['_role_uniqueness_log'] = role_uniqueness_log
+    except Exception as e:
+        print(f"通用身份唯一性推导失败: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # 预言家查验推导：根据起跳玩家的预言家概率，调整被查验玩家的身份概率
+    # 如果起跳玩家被确认为预言家（100%），则查验结果100%确定
+    #   - 查杀目标 = 铁狼人（100%）
+    #   - 金水目标 = 铁好人（100%）
+    try:
+        prophet_claims = get_prophet_claims(game_id)
+        if prophet_claims:
+            role_ids_list = list(role_ids)
+            results, inference_result = apply_prophet_inference(
+                results, role_camps, role_ids_list, prophet_claims
+            )
+            # 保存推导结果到结果中（用于前端展示）
+            results['_prophet_inference_result'] = inference_result
+    except Exception as e:
+        print(f"预言家查验推导失败: {e}")
+        import traceback
+        traceback.print_exc()
+
     # 8. 保存预测结果到数据库（仅当无scenario_id时，情景预测不覆盖真实预测）
     if not scenario_id:
         save_predictions(game_id, results)
@@ -1506,6 +1538,9 @@ def save_predictions(game_id, results):
     execute_write(f"DELETE FROM predictions WHERE game_id = {ph()}", (game_id,))
 
     for player_id, data in results.items():
+        # 跳过非玩家ID的键（如'_prophet_inference_log'）
+        if isinstance(player_id, str) and player_id.startswith('_'):
+            continue
         for role_id, prob in data["probabilities"].items():
             execute_write(
                 f"INSERT INTO predictions (game_id, player_id, role_id, probability) VALUES ({ph()}, {ph()}, {ph()}, {ph()})",
