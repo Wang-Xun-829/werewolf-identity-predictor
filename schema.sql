@@ -161,15 +161,31 @@ CREATE TABLE IF NOT EXISTS game_scenarios (
 );
 
 -- 14. 情景假设身份分配表
--- 存储每个情景中，用户假设某些玩家的身份
+-- 存储每个情景中，用户假设某些玩家的身份或阵营
 CREATE TABLE IF NOT EXISTS scenario_assignments (
     id            SERIAL PRIMARY KEY,
     scenario_id   INTEGER NOT NULL REFERENCES game_scenarios(id) ON DELETE CASCADE,
     player_id     INTEGER NOT NULL REFERENCES players(id),
-    role_id       INTEGER NOT NULL REFERENCES roles(id),   -- 假设的身份
-    confidence    REAL DEFAULT 0.9,                         -- 置信度 0~1（0.9表示90%确定）
+    role_id       INTEGER REFERENCES roles(id),        -- 假设的具体身份（可空，与camp二选一）
+    camp          VARCHAR(20),                          -- 假设的阵营（好人/狼人，可空，与role_id二选一）
+    confidence    REAL DEFAULT 0.9,                     -- 置信度 0~1（0.9表示90%确定）
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(scenario_id, player_id)                          -- 同一情景下同一玩家只能有一个假设身份
+    UNIQUE(scenario_id, player_id)                      -- 同一情景下同一玩家只能有一个假设
+);
+
+-- 15. 玩家关系表
+-- 存储对局中玩家之间的关系（踩、保、站边、投票等），用于关系图推理和回溯推断
+CREATE TABLE IF NOT EXISTS player_relationships (
+    id                SERIAL PRIMARY KEY,
+    game_id           INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    source_player_id  INTEGER NOT NULL REFERENCES players(id),   -- 关系发起者（A踩B中的A）
+    target_player_id  INTEGER NOT NULL REFERENCES players(id),   -- 关系目标（A踩B中的B）
+    relationship_type VARCHAR(30) NOT NULL,                       -- 关系类型：attack(踩)/defend(保)/side(站边)/vote(投票)/check(查杀)/gold(金水)
+    strength          REAL DEFAULT 0.5,                           -- 关系强度 0~1（查杀比普通踩更强）
+    round_number      INTEGER,                                     -- 发生轮次
+    phase             VARCHAR(20),                                 -- 发生阶段
+    behavior_id       INTEGER REFERENCES behavior_records(id),    -- 关联的行为记录
+    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ============================================================
@@ -181,3 +197,6 @@ CREATE INDEX IF NOT EXISTS idx_behavior_action  ON behavior_records(action_id);
 CREATE INDEX IF NOT EXISTS idx_predictions_game ON predictions(game_id);
 CREATE INDEX IF NOT EXISTS idx_game_players_game ON game_players(game_id);
 CREATE INDEX IF NOT EXISTS idx_scores_game      ON prediction_scores(game_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_game   ON player_relationships(game_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_source ON player_relationships(source_player_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_target ON player_relationships(target_player_id);

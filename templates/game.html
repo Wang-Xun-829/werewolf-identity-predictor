@@ -144,6 +144,7 @@
         <button class="btn btn-success" id="btn-confirm" onclick="showConfirmModal()" style="display:none;">✅ 确认结果（补全身份后）</button>
         <button class="btn btn-secondary" onclick="viewScores()">📊 查看预测打分</button>
         <button class="btn btn-info" onclick="showScenarioModal()">🔀 情景管理</button>
+        <button class="btn btn-primary" onclick="showRelationshipModal()">🕸️ 关系图/回溯</button>
     </div>
     <div id="game-result" style="margin-top:16px;"></div>
 </div>
@@ -271,6 +272,62 @@
 
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="hideModal('scenario-modal')">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- 关系图/回溯推断模态框 -->
+<div class="modal-overlay" id="relationship-modal">
+    <div class="modal" style="max-width:900px;max-height:85vh;overflow-y:auto;">
+        <div class="modal-title">玩家关系图与回溯推断</div>
+
+        <!-- 操作栏 -->
+        <div style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+            <button class="btn btn-primary" onclick="extractRelationships()">🔄 重新提取关系</button>
+            <span id="relationship-count" style="color:var(--text-secondary);font-size:13px;"></span>
+        </div>
+
+        <!-- 关系列表 -->
+        <div style="margin-bottom:20px;">
+            <div style="font-weight:600;margin-bottom:8px;">玩家关系列表</div>
+            <div id="relationship-list" style="max-height:300px;overflow-y:auto;">
+                <div class="empty-state"><p>点击"重新提取关系"按钮加载</p></div>
+            </div>
+        </div>
+
+        <hr style="border-color:var(--border-subtle);margin:20px 0;">
+
+        <!-- 回溯推断 -->
+        <div>
+            <div style="font-weight:600;margin-bottom:12px;">回溯推断</div>
+            <div style="padding:12px;background:rgba(139,92,246,0.05);border-radius:8px;margin-bottom:12px;">
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">
+                    标记某个玩家的身份后，系统会回溯分析他与其他玩家的关系，给出修正建议。
+                    例如：确认A是狼人后，A保过的人大概率是狼，A踩过的人大概率是好人。
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>确认玩家</label>
+                        <select class="form-control" id="backtrack-player"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>确认阵营</label>
+                        <select class="form-control" id="backtrack-camp">
+                            <option value="好人">好人</option>
+                            <option value="狼人">狼人</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-primary" onclick="runBacktrack()">🔍 开始回溯</button>
+                    </div>
+                </div>
+            </div>
+            <div id="backtrack-result"></div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('relationship-modal')">关闭</button>
         </div>
     </div>
 </div>

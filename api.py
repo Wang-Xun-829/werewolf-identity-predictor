@@ -5,6 +5,7 @@ API 路由模块 - 所有后端接口
 from flask import Blueprint, request, jsonify
 from db import DB_TYPE, ph, query_all, query_one, execute_write
 from prediction import predict_game, get_predictions, update_weights_from_game, score_predictions
+from relationship import extract_relationships, get_relationship_graph, backtrack_inference, propagate_probabilities
 
 api = Blueprint('api', __name__, url_prefix='/api')
 
@@ -1006,3 +1007,55 @@ def list_algorithm_weights():
         ORDER BY r.camp, r.name, a.name
     """)
     return ok(weights)
+
+
+# ============================================================
+# 8. 玩家关系图与回溯推断（第二阶段）
+# ============================================================
+@api.route('/games/<int:game_id>/relationships/extract', methods=['POST'])
+def extract_game_relationships(game_id):
+    """从行为记录中提取玩家间关系（重新提取，会覆盖已有关系）"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    count = extract_relationships(game_id)
+    return ok({"extracted_count": count}, f"成功提取 {count} 条玩家关系")
+
+
+@api.route('/games/<int:game_id>/relationships', methods=['GET'])
+def get_game_relationships(game_id):
+    """获取对局的玩家关系图"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    graph = get_relationship_graph(game_id)
+    return ok(graph)
+
+
+@api.route('/games/<int:game_id>/backtrack', methods=['POST'])
+def backtrack_game(game_id):
+    """回溯推断：当某个玩家身份被确认后，回溯修正相关玩家概率
+
+    请求体：
+        player_id: 被确认身份的玩家ID
+        camp: 确认的阵营（好人/狼人）
+        role_id: 确认的具体身份（可选）
+    """
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    data = request.get_json() or {}
+    player_id = data.get('player_id')
+    camp = data.get('camp')
+    role_id = data.get('role_id')
+    if not player_id or not camp:
+        return fail("玩家ID和阵营不能为空")
+    # 先确保关系已提取
+    extract_relationships(game_id)
+    # 执行回溯推断
+    adjustments = backtrack_inference(game_id, player_id, camp, role_id)
+    return ok({
+        "confirmed_player_id": player_id,
+        "confirmed_camp": camp,
+        "adjustments": adjustments
+    }, f"回溯推断完成，发现 {len(adjustments)} 条修正建议")

@@ -981,3 +981,124 @@ async function loadInvariantPlayers() {
         banner.style.display = 'block';
     }
 }
+
+// ============================================================
+// 玩家关系图与回溯推断（第二阶段）
+// ============================================================
+
+// 显示关系图模态框
+async function showRelationshipModal() {
+    // 填充回溯推断的玩家下拉框
+    const playerSelect = document.getElementById('backtrack-player');
+    playerSelect.innerHTML = '<option value="">选择玩家</option>';
+    gamePlayers.forEach(gp => {
+        playerSelect.innerHTML += `<option value="${gp.player_id}">${escapeHtml(gp.player_name)}</option>`;
+    });
+    // 清空之前的结果
+    document.getElementById('relationship-list').innerHTML = '<div class="empty-state"><p>点击"重新提取关系"按钮加载</p></div>';
+    document.getElementById('backtrack-result').innerHTML = '';
+    document.getElementById('relationship-count').textContent = '';
+    hideModal('relationship-modal');
+    document.getElementById('relationship-modal').classList.add('show');
+}
+
+// 提取关系
+async function extractRelationships() {
+    const result = await api('POST', `/games/${gameId}/relationships/extract`);
+    if (result) {
+        showToast(`成功提取 ${result.data.extracted_count} 条关系`, 'success');
+        await loadRelationships();
+    }
+}
+
+// 加载关系列表
+async function loadRelationships() {
+    const result = await api('GET', `/games/${gameId}/relationships`);
+    if (result && result.data) {
+        renderRelationshipList(result.data.edges);
+        document.getElementById('relationship-count').textContent = `共 ${result.data.edges.length} 条关系`;
+    }
+}
+
+// 渲染关系列表
+function renderRelationshipList(edges) {
+    const container = document.getElementById('relationship-list');
+    if (!edges || edges.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>暂无关系数据，请先录入有目标对象的行为</p></div>';
+        return;
+    }
+    // 按玩家分组
+    const bySource = {};
+    edges.forEach(e => {
+        if (!bySource[e.source]) bySource[e.source] = [];
+        bySource[e.source].push(e);
+    });
+    let html = '';
+    for (const sourceId in bySource) {
+        const sourcePlayer = gamePlayers.find(gp => gp.player_id == sourceId);
+        const sourceName = sourcePlayer ? sourcePlayer.player_name : `玩家${sourceId}`;
+        html += `<div style="margin-bottom:12px;">
+            <div style="font-weight:600;color:var(--neon-cyan);margin-bottom:6px;">${escapeHtml(sourceName)} 的关系：</div>`;
+        bySource[sourceId].forEach(e => {
+            const targetPlayer = gamePlayers.find(gp => gp.player_id == e.target);
+            const targetName = targetPlayer ? targetPlayer.player_name : `玩家${e.target}`;
+            const directionClass = e.direction > 0 ? 'badge-success' : 'badge-danger';
+            const directionIcon = e.direction > 0 ? '🛡️' : '⚔️';
+            html += `<div style="padding:6px 10px;background:rgba(15,23,42,0.5);border-radius:6px;margin-bottom:4px;display:flex;align-items:center;gap:8px;">
+                <span class="badge ${directionClass}">${directionIcon} ${escapeHtml(e.type_name)}</span>
+                <span>→</span>
+                <span style="font-weight:600;">${escapeHtml(targetName)}</span>
+                <span style="color:var(--text-muted);font-size:12px;margin-left:auto;">强度: ${(e.strength * 100).toFixed(0)}%</span>
+            </div>`;
+        });
+        html += '</div>';
+    }
+    container.innerHTML = html;
+}
+
+// 运行回溯推断
+async function runBacktrack() {
+    const playerId = document.getElementById('backtrack-player').value;
+    const camp = document.getElementById('backtrack-camp').value;
+    if (!playerId) {
+        showToast('请选择玩家', 'error');
+        return;
+    }
+    const result = await api('POST', `/games/${gameId}/backtrack`, {
+        player_id: parseInt(playerId),
+        camp: camp
+    });
+    if (result) {
+        renderBacktrackResult(result.data);
+    }
+}
+
+// 渲染回溯推断结果
+function renderBacktrackResult(data) {
+    const container = document.getElementById('backtrack-result');
+    const adjustments = data.adjustments || [];
+    if (adjustments.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>未发现可回溯的关系，请先录入更多有目标对象的行为</p></div>';
+        return;
+    }
+    const confirmedPlayer = gamePlayers.find(gp => gp.player_id == data.confirmed_player_id);
+    const confirmedName = confirmedPlayer ? confirmedPlayer.player_name : `玩家${data.confirmed_player_id}`;
+    let html = `<div style="padding:12px;background:rgba(0,240,255,0.05);border-radius:8px;margin-bottom:12px;">
+        <div style="font-weight:600;margin-bottom:8px;">回溯推断结果（确认 ${escapeHtml(confirmedName)} 是 ${data.confirmed_camp}）：</div>
+        <div style="font-size:13px;color:var(--text-secondary);">发现 ${adjustments.length} 条修正建议</div>
+    </div>`;
+    adjustments.forEach(a => {
+        const isWolfUp = a.adjustment === 'wolf_up';
+        const badgeClass = isWolfUp ? 'badge-danger' : 'badge-success';
+        const badgeText = isWolfUp ? '🐺 狼人概率↑' : '✨ 好人概率↑';
+        html += `<div style="padding:10px 12px;background:rgba(15,23,42,0.5);border-radius:8px;margin-bottom:8px;border-left:3px solid ${isWolfUp ? 'var(--neon-red)' : 'var(--neon-green)'};">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+                <span style="font-weight:600;">${escapeHtml(a.player_name)}</span>
+                <span class="badge ${badgeClass}">${badgeText}</span>
+                <span style="color:var(--text-muted);font-size:12px;margin-left:auto;">关系强度: ${(a.strength * 100).toFixed(0)}%</span>
+            </div>
+            <div style="font-size:13px;color:var(--text-secondary);">${escapeHtml(a.reason)}</div>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
