@@ -1119,3 +1119,89 @@ def set_game_phase(game_id):
         return fail("阶段名称不能为空")
     result = set_phase(game_id, phase, round_number)
     return ok(result, f"已设置为：第{result['round']}轮 {result['display']}")
+
+
+# ============================================================
+# 10. 确认身份（逻辑基点）
+# ============================================================
+@api.route('/games/<int:game_id>/confirmed_identities', methods=['GET'])
+def list_confirmed_identities(game_id):
+    """获取对局的确认身份列表"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    identities = query_all(
+        f"""SELECT ci.*, p.name as player_name, r.name as role_name, r.camp as role_camp
+            FROM game_confirmed_identities ci
+            JOIN players p ON ci.player_id = p.id
+            LEFT JOIN roles r ON ci.role_id = r.id
+            WHERE ci.game_id = {ph()}
+            ORDER BY ci.confirmed_at""",
+        (game_id,)
+    )
+    return ok(identities)
+
+
+@api.route('/games/<int:game_id>/confirmed_identities', methods=['POST'])
+def set_confirmed_identity(game_id):
+    """设置确认身份
+
+    请求体：
+        player_id: 玩家ID
+        role_id: 身份ID（可选，与camp二选一）
+        camp: 阵营（可选，与role_id二选一）
+        reason: 确认原因（如"单边预言家"、"自爆"等）
+    """
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    data = request.get_json() or {}
+    player_id = data.get('player_id')
+    role_id = data.get('role_id')
+    camp = data.get('camp')
+    reason = data.get('reason', '')
+
+    if not player_id:
+        return fail("玩家ID不能为空")
+    if not role_id and not camp:
+        return fail("身份和阵营至少填写一个")
+
+    # 检查玩家是否在对局中
+    game_player = query_one(
+        f"SELECT * FROM game_players WHERE game_id = {ph()} AND player_id = {ph()}",
+        (game_id, player_id)
+    )
+    if not game_player:
+        return fail("该玩家不在此对局中")
+
+    # 删除已有的确认身份（如果存在）
+    execute_write(
+        f"DELETE FROM game_confirmed_identities WHERE game_id = {ph()} AND player_id = {ph()}",
+        (game_id, player_id)
+    )
+
+    # 插入新的确认身份
+    execute_write(
+        f"""INSERT INTO game_confirmed_identities (game_id, player_id, role_id, camp, reason)
+            VALUES ({ph()}, {ph()}, {ph()}, {ph()}, {ph()})""",
+        (game_id, player_id, role_id, camp, reason)
+    )
+
+    # 触发回溯推断（如果确认了阵营）
+    if camp:
+        try:
+            backtrack_inference(game_id, player_id, camp)
+        except Exception as e:
+            print(f"回溯推断失败: {e}")
+
+    return ok(message="确认身份设置成功，已触发回溯推断")
+
+
+@api.route('/confirmed_identities/<int:identity_id>', methods=['DELETE'])
+def delete_confirmed_identity(identity_id):
+    """删除确认身份"""
+    identity = query_one("SELECT * FROM game_confirmed_identities WHERE id = " + ph(), (identity_id,))
+    if not identity:
+        return fail("确认身份不存在", 404)
+    execute_write(f"DELETE FROM game_confirmed_identities WHERE id = {ph()}", (identity_id,))
+    return ok(message="确认身份已删除")

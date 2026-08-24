@@ -32,6 +32,7 @@
             <div class="card-title" style="flex-wrap:wrap;gap:8px;">
                 <span id="selected-player-name">玩家预测结果</span>
                 <span id="selected-player-top-role" class="badge badge-info"></span>
+                <button class="btn btn-primary btn-sm" onclick="showConfirmIdentityModal()" style="margin-left:auto;">✅ 确认身份</button>
             </div>
             <!-- 情景切换标签 -->
             <div class="scenario-tabs" id="scenario-tabs" style="display:none;margin-bottom:12px;">
@@ -372,6 +373,43 @@
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="hideModal('phase-adjust-modal')">取消</button>
             <button class="btn btn-primary" onclick="confirmPhaseAdjust()">确认调整</button>
+        </div>
+    </div>
+</div>
+
+<!-- 确认身份模态框 -->
+<div class="modal-overlay" id="confirm-identity-modal">
+    <div class="modal" style="max-width:500px;">
+        <div class="modal-title">确认身份 <span id="confirm-identity-player-name" style="color:var(--neon-cyan);"></span></div>
+        <div class="form-group">
+            <label>确认类型</label>
+            <select class="form-control" id="confirm-identity-type" onchange="toggleConfirmIdentityFields()">
+                <option value="role">确认具体身份</option>
+                <option value="camp">只确认阵营</option>
+            </select>
+        </div>
+        <div class="form-group" id="confirm-role-group">
+            <label>具体身份</label>
+            <select class="form-control" id="confirm-role-select"></select>
+        </div>
+        <div class="form-group" id="confirm-camp-group" style="display:none;">
+            <label>阵营</label>
+            <select class="form-control" id="confirm-camp-select">
+                <option value="好人">好人</option>
+                <option value="狼人">狼人</option>
+                <option value="第三方">第三方</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>确认原因（可选）</label>
+            <input type="text" class="form-control" id="confirm-reason-input" placeholder="如：单边预言家、自爆、开枪证明等">
+        </div>
+        <div style="margin-bottom:16px;padding:10px;background:rgba(255,193,7,0.1);border-radius:8px;border:1px solid rgba(255,193,7,0.3);font-size:13px;color:var(--text-secondary);">
+            ⚠️ 确认身份是100%确定的事实，会直接覆盖预测结果，并触发回溯推断。请谨慎使用！
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('confirm-identity-modal')">取消</button>
+            <button class="btn btn-primary" onclick="submitConfirmIdentity()">确认</button>
         </div>
     </div>
 </div>

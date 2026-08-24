@@ -1443,6 +1443,57 @@ def predict_game(game_id, scenario_id=None):
             results[player_id]['top_probability'] = round(probs[top_role_id], 6)
             results[player_id]['probabilities'] = probs
 
+    # 应用确认身份（逻辑基点，置信度100%）
+    # 确认身份是确定的事实，不是假设：
+    #   - 具体身份确认：该身份概率设为100%，其他身份设为0%
+    #   - 阵营确认：该阵营所有身份的总概率设为100%，阵营内按原比例分配
+    confirmed_identities = query_all(
+        f"SELECT * FROM game_confirmed_identities WHERE game_id = {ph()}",
+        (game_id,)
+    )
+    if confirmed_identities:
+        for ci in confirmed_identities:
+            player_id = ci['player_id']
+            if player_id not in results:
+                continue
+            confirmed_role_id = ci.get('role_id')
+            confirmed_camp = ci.get('camp')
+            probs = results[player_id]['probabilities']
+
+            if confirmed_role_id and confirmed_role_id in probs:
+                # 具体身份确认：100%确定
+                for rid in probs:
+                    probs[rid] = 1.0 if rid == confirmed_role_id else 0.0
+            elif confirmed_camp:
+                # 阵营确认：该阵营总概率100%，阵营内按原比例分配
+                camp_role_ids = [rid for rid, camp in role_camps.items() if camp == confirmed_camp]
+                camp_total = sum(probs.get(rid, 0) for rid in camp_role_ids)
+                if camp_total > 0:
+                    for rid in camp_role_ids:
+                        probs[rid] = round(probs.get(rid, 0) / camp_total, 6)
+                    for rid in probs:
+                        if rid not in camp_role_ids:
+                            probs[rid] = 0.0
+                else:
+                    # 阵营内原概率为0，平均分配
+                    count = len(camp_role_ids)
+                    if count > 0:
+                        for rid in camp_role_ids:
+                            probs[rid] = round(1.0 / count, 6)
+                        for rid in probs:
+                            if rid not in camp_role_ids:
+                                probs[rid] = 0.0
+
+            # 重新找出最高概率身份
+            top_role_id = max(probs, key=probs.get)
+            results[player_id]['top_role_id'] = top_role_id
+            results[player_id]['top_role_name'] = role_names.get(top_role_id, "")
+            results[player_id]['top_probability'] = round(probs[top_role_id], 6)
+            results[player_id]['probabilities'] = probs
+            # 标记为已确认
+            results[player_id]['is_confirmed'] = True
+            results[player_id]['confirmed_reason'] = ci.get('reason', '')
+
     # 8. 保存预测结果到数据库（仅当无scenario_id时，情景预测不覆盖真实预测）
     if not scenario_id:
         save_predictions(game_id, results)

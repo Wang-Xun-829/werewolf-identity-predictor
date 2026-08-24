@@ -1228,3 +1228,78 @@ async function confirmPhaseAdjust() {
         await loadCurrentPhase();
     }
 }
+
+
+// ============================================================
+// 确认身份（逻辑基点）
+// ============================================================
+
+// 显示确认身份模态框
+function showConfirmIdentityModal() {
+    if (!selectedPlayerId) {
+        showToast('请先选择一个玩家', 'error');
+        return;
+    }
+    const player = allPlayers.find(p => p.id === selectedPlayerId);
+    document.getElementById('confirm-identity-player-name').textContent = player ? player.name : '';
+    // 填充身份下拉框
+    const roleSelect = document.getElementById('confirm-role-select');
+    roleSelect.innerHTML = '';
+    allRoles.forEach(role => {
+        const opt = document.createElement('option');
+        opt.value = role.id;
+        opt.textContent = role.name + ' (' + role.camp + ')';
+        roleSelect.appendChild(opt);
+    });
+    hideModal('confirm-identity-modal');
+    document.getElementById('confirm-identity-modal').classList.add('show');
+}
+
+// 切换确认类型字段
+function toggleConfirmIdentityFields() {
+    const type = document.getElementById('confirm-identity-type').value;
+    document.getElementById('confirm-role-group').style.display = type === 'role' ? 'block' : 'none';
+    document.getElementById('confirm-camp-group').style.display = type === 'camp' ? 'block' : 'none';
+}
+
+// 提交确认身份
+async function submitConfirmIdentity() {
+    if (!selectedPlayerId) return;
+    const type = document.getElementById('confirm-identity-type').value;
+    const reason = document.getElementById('confirm-reason-input').value.trim();
+    const data = {
+        player_id: selectedPlayerId,
+        reason: reason
+    };
+    if (type === 'role') {
+        data.role_id = parseInt(document.getElementById('confirm-role-select').value);
+    } else {
+        data.camp = document.getElementById('confirm-camp-select').value;
+    }
+    const result = await api('POST', '/games/' + gameId + '/confirmed_identities', data);
+    if (result) {
+        showToast(result.message, 'success');
+        hideModal('confirm-identity-modal');
+        document.getElementById('confirm-reason-input').value = '';
+        await loadPredictions();
+    }
+}
+
+// 加载确认身份列表（在预测结果中显示标记）
+async function loadConfirmedIdentities() {
+    const result = await api('GET', '/games/' + gameId + '/confirmed_identities');
+    if (result && result.data) {
+        return result.data;
+    }
+    return [];
+}
+
+// 删除确认身份
+async function deleteConfirmedIdentity(identityId) {
+    if (!confirm('确定删除这个确认身份吗？删除后预测结果会恢复正常计算。')) return;
+    const result = await api('DELETE', '/confirmed_identities/' + identityId);
+    if (result) {
+        showToast(result.message, 'success');
+        await loadPredictions();
+    }
+}
