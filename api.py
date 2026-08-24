@@ -6,6 +6,7 @@ from flask import Blueprint, request, jsonify
 from db import DB_TYPE, ph, query_all, query_one, execute_write
 from prediction import predict_game, get_predictions, update_weights_from_game, score_predictions
 from relationship import extract_relationships, get_relationship_graph, backtrack_inference, propagate_probabilities
+from game_flow import get_current_phase, advance_phase, wolf_self_explode, set_phase, init_game_phase
 
 api = Blueprint('api', __name__, url_prefix='/api')
 
@@ -1059,3 +1060,62 @@ def backtrack_game(game_id):
         "confirmed_camp": camp,
         "adjustments": adjustments
     }, f"回溯推断完成，发现 {len(adjustments)} 条修正建议")
+
+
+# ============================================================
+# 9. 游戏流程阶段控制
+# ============================================================
+@api.route('/games/<int:game_id>/phase', methods=['GET'])
+def get_game_phase(game_id):
+    """获取对局当前阶段和轮次"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    phase = get_current_phase(game_id)
+    return ok(phase)
+
+
+@api.route('/games/<int:game_id>/phase/advance', methods=['POST'])
+def advance_game_phase(game_id):
+    """推进到下一阶段
+
+    请求体（可选）：
+        pk_round: 是否是PK发言轮次（平票后追加）
+    """
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    data = request.get_json() or {}
+    pk_round = data.get('pk_round', False)
+    phase = advance_phase(game_id, pk_round=pk_round)
+    return ok(phase, f"已推进到：第{phase['round']}轮 {phase['display']}")
+
+
+@api.route('/games/<int:game_id>/phase/self_explode', methods=['POST'])
+def wolf_self_explode_phase(game_id):
+    """狼人自爆：直接进入下一个黑夜"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    phase = wolf_self_explode(game_id)
+    return ok(phase, f"狼人自爆！进入第{phase['round']}轮 {phase['display']}")
+
+
+@api.route('/games/<int:game_id>/phase', methods=['PUT'])
+def set_game_phase(game_id):
+    """手动设置当前阶段（用于调整）
+
+    请求体：
+        phase: 阶段名称
+        round: 轮次（可选）
+    """
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    data = request.get_json() or {}
+    phase = data.get('phase')
+    round_number = data.get('round')
+    if not phase:
+        return fail("阶段名称不能为空")
+    result = set_phase(game_id, phase, round_number)
+    return ok(result, f"已设置为：第{result['round']}轮 {result['display']}")

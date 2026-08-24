@@ -14,6 +14,9 @@ let scenarios = [];  // 所有情景列表
 let currentScenarioId = '';  // 当前用于预测的情景ID（空字符串表示综合预测）
 let editingScenarioId = null;  // 当前在模态框中编辑的情景ID
 
+// 当前游戏阶段信息
+let currentGamePhase = null;  // {phase, round, display, time}
+
 // 通用模态框函数
 function hideModal(id) {
     document.getElementById(id).classList.remove('show');
@@ -69,6 +72,8 @@ async function loadGame() {
     // 加载情景列表和铁狼/铁好人
     await loadScenarios();
     await loadInvariantPlayers();
+    // 加载当前游戏阶段
+    await loadCurrentPhase();
 }
 
 // 填充下拉选择框
@@ -102,6 +107,15 @@ function populateSelects() {
     allRoles.forEach(r => {
         roleSelect.innerHTML += `<option value="${r.id}">${escapeHtml(r.name)} (${r.camp})</option>`;
     });
+
+    // 玩家选择下拉框增加搜索功能
+    setTimeout(() => {
+        initSearchableSelect('behavior-actor', '搜索发起者...');
+        initSearchableSelect('behavior-target', '搜索目标玩家...');
+        if (filterPlayerSelect) {
+            initSearchableSelect('behavior-filter-player', '搜索玩家...');
+        }
+    }, 50);
 }
 
 // 加载预测结果
@@ -332,19 +346,48 @@ async function addBehavior() {
     if (targetId) data.target_id = parseInt(targetId);
     if (roleId) data.actor_role_id = parseInt(roleId);
     if (camp) data.actor_camp = camp;
-    if (round) data.round_number = parseInt(round);
-    if (phase) data.phase = phase;
+    // 如果用户没有手动设置轮次，自动使用当前游戏轮次
+    if (round) {
+        data.round_number = parseInt(round);
+    } else if (currentGamePhase) {
+        data.round_number = currentGamePhase.round;
+    }
+    // 如果用户没有手动设置阶段，自动使用当前游戏阶段
+    if (phase) {
+        data.phase = phase;
+    } else if (currentGamePhase) {
+        data.phase = currentGamePhase.phase;
+    }
     if (notes) data.notes = notes;
 
     const result = await api('POST', `/games/${gameId}/behaviors/batch`, data);
     if (result) {
         const count = result.data ? result.data.created_count : selectedActionIds.length;
         showToast(`成功录入 ${count} 条行为`, 'success');
-        // 清空表单
+        // 保存当前行为发起者的选择（重新加载后恢复）
+        const savedActorId = document.getElementById('behavior-actor').value;
+        // 清空表单（保留行为发起者）
         document.getElementById('behavior-notes').value = '';
         clearSelectedActions();
         // 重新加载
         await loadGame();
+        // 恢复行为发起者的选择
+        if (savedActorId) {
+            setTimeout(() => {
+                const actorSelect = document.getElementById('behavior-actor');
+                if (actorSelect) {
+                    actorSelect.value = savedActorId;
+                    // 触发可搜索下拉框的显示更新
+                    const display = actorSelect.nextElementSibling;
+                    if (display && display.classList.contains('searchable-select')) {
+                        const opt = actorSelect.querySelector(`option[value="${savedActorId}"]`);
+                        if (opt) {
+                            display.querySelector('.searchable-select-display').textContent = opt.textContent;
+                        }
+                    }
+                }
+            }, 100);
+        }
     }
 }
 
@@ -869,6 +912,10 @@ async function selectScenarioForEdit(scenarioId) {
         roleOptions.innerHTML += `<option value="${r.id}">${escapeHtml(r.name)} (${r.camp})</option>`;
     });
     renderScenarioList();
+    // 玩家选择下拉框增加搜索功能
+    setTimeout(() => {
+        initSearchableSelect('assignment-player', '搜索玩家...');
+    }, 50);
     await loadAssignments();
 }
 
@@ -1000,6 +1047,10 @@ async function showRelationshipModal() {
     document.getElementById('relationship-count').textContent = '';
     hideModal('relationship-modal');
     document.getElementById('relationship-modal').classList.add('show');
+    // 玩家选择下拉框增加搜索功能
+    setTimeout(() => {
+        initSearchableSelect('backtrack-player', '搜索玩家...');
+    }, 100);
 }
 
 // 提取关系
@@ -1101,4 +1152,79 @@ function renderBacktrackResult(data) {
         </div>`;
     });
     container.innerHTML = html;
+}
+
+
+// ============================================================
+// 游戏流程阶段控制
+// ============================================================
+
+// 加载当前阶段
+async function loadCurrentPhase() {
+    const result = await api('GET', '/games/' + gameId + '/phase');
+    if (result && result.data) {
+        const phase = result.data;
+        currentGamePhase = phase;  // 保存到全局变量
+        document.getElementById('current-phase-display').textContent =
+            '第' + phase.round + '轮 ' + phase.display;
+        const phaseSelect = document.getElementById('behavior-phase');
+        if (phaseSelect) {
+            phaseSelect.value = phase.phase;
+        }
+    }
+}
+
+// 推进到下一阶段
+async function advancePhase() {
+    if (!confirm('确定推进到下一环节吗？')) return;
+    const result = await api('POST', '/games/' + gameId + '/phase/advance', {});
+    if (result) {
+        showToast(result.message, 'success');
+        await loadCurrentPhase();
+    }
+}
+
+// 狼人自爆
+async function wolfSelfExplode() {
+    if (!confirm('确定狼人自爆，直接进入下一个黑夜吗？')) return;
+    const result = await api('POST', '/games/' + gameId + '/phase/self_explode', {});
+    if (result) {
+        showToast(result.message, 'success');
+        await loadCurrentPhase();
+    }
+}
+
+// 显示阶段调整模态框
+function showPhaseAdjustModal() {
+    const currentText = document.getElementById('current-phase-display').textContent;
+    const phaseSelect = document.getElementById('adjust-phase-select');
+    const roundInput = document.getElementById('adjust-round-input');
+    const match = currentText.match(/第(\d+)轮\s+(.+)/);
+    if (match) {
+        roundInput.value = match[1];
+        const phaseName = match[2].replace(/[^\u4e00-\u9fa5]/g, '');
+        for (let i = 0; i < phaseSelect.options.length; i++) {
+            if (phaseSelect.options[i].value.indexOf(phaseName) >= 0 || phaseName.indexOf(phaseSelect.options[i].value) >= 0) {
+                phaseSelect.value = phaseSelect.options[i].value;
+                break;
+            }
+        }
+    }
+    hideModal('phase-adjust-modal');
+    document.getElementById('phase-adjust-modal').classList.add('show');
+}
+
+// 确认阶段调整
+async function confirmPhaseAdjust() {
+    const phase = document.getElementById('adjust-phase-select').value;
+    const round = parseInt(document.getElementById('adjust-round-input').value) || 1;
+    const result = await api('PUT', '/games/' + gameId + '/phase', {
+        phase: phase,
+        round: round
+    });
+    if (result) {
+        showToast(result.message, 'success');
+        hideModal('phase-adjust-modal');
+        await loadCurrentPhase();
+    }
 }

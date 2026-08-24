@@ -50,6 +50,21 @@
                 <span>录入行为</span>
                 <button class="btn btn-success btn-sm" onclick="refreshPredictions()">🔄 刷新预测</button>
             </div>
+
+            <!-- 游戏流程控制 -->
+            <div id="game-flow-control" style="margin-bottom:16px;padding:12px;background:rgba(0,240,255,0.05);border-radius:8px;border:1px solid rgba(0,240,255,0.2);">
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                    <div>
+                        <span style="font-size:12px;color:var(--text-secondary);">当前阶段：</span>
+                        <span id="current-phase-display" style="font-weight:600;color:var(--neon-cyan);font-size:16px;">加载中...</span>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-primary btn-sm" onclick="advancePhase()">⏭️ 下一环节</button>
+                        <button class="btn btn-danger btn-sm" onclick="wolfSelfExplode()">💥 狼人自爆</button>
+                        <button class="btn btn-secondary btn-sm" onclick="showPhaseAdjustModal()">⚙️ 调整</button>
+                    </div>
+                </div>
+            </div>
             <div class="form-row">
                 <div class="form-group">
                     <label>行为发起者 <span class="required">*</span></label>
@@ -328,6 +343,35 @@
 
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="hideModal('relationship-modal')">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- 阶段调整模态框 -->
+<div class="modal-overlay" id="phase-adjust-modal">
+    <div class="modal" style="max-width:500px;">
+        <div class="modal-title">调整当前阶段</div>
+        <div class="form-group">
+            <label>选择阶段</label>
+            <select class="form-control" id="adjust-phase-select">
+                <option value="夜间行动">🌙 夜间行动</option>
+                <option value="警上发言">🎤 警上发言</option>
+                <option value="警徽投票">🗳️ 警徽投票</option>
+                <option value="死讯公布">💀 死讯公布</option>
+                <option value="白天发言">💬 白天发言</option>
+                <option value="PK发言">⚔️ PK发言</option>
+                <option value="放逐投票">🚪 放逐投票</option>
+                <option value="遗言">📝 遗言</option>
+                <option value="退水自爆">🔄 退水/自爆</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>轮次</label>
+            <input type="number" class="form-control" id="adjust-round-input" value="1" min="1">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('phase-adjust-modal')">取消</button>
+            <button class="btn btn-primary" onclick="confirmPhaseAdjust()">确认调整</button>
         </div>
     </div>
 </div>

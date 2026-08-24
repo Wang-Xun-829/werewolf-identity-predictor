@@ -83,3 +83,168 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+// ============================================================
+// 可搜索下拉框组件
+// ============================================================
+/**
+ * 把普通的select元素转换成可搜索的下拉框
+ * @param {string} selectId - select元素的ID
+ * @param {string} placeholder - 搜索框占位符
+ */
+function initSearchableSelect(selectId, placeholder = '搜索...') {
+    const select = document.getElementById(selectId);
+    if (!select || select.dataset.searchable === 'true') return;
+
+    select.dataset.searchable = 'true';
+    select.style.display = 'none';
+
+    // 创建容器
+    const wrapper = document.createElement('div');
+    wrapper.className = 'searchable-select';
+    wrapper.style.position = 'relative';
+
+    // 创建显示框
+    const display = document.createElement('div');
+    display.className = 'searchable-select-display';
+    display.style.cssText = `
+        padding: 8px 12px;
+        border: 1px solid var(--border-color, #334155);
+        border-radius: 6px;
+        background: var(--input-bg, rgba(15,23,42,0.6));
+        color: var(--text-primary, #e2e8f0);
+        cursor: pointer;
+        min-height: 20px;
+        font-size: 14px;
+    `;
+    display.textContent = placeholder;
+
+    // 创建下拉面板
+    const dropdown = document.createElement('div');
+    dropdown.className = 'searchable-select-dropdown';
+    dropdown.style.cssText = `
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--card-bg, #1e293b);
+        border: 1px solid var(--border-color, #334155);
+        border-radius: 6px;
+        margin-top: 4px;
+        z-index: 1000;
+        display: none;
+        max-height: 250px;
+        overflow-y: auto;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    `;
+
+    // 创建搜索框
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = placeholder;
+    searchInput.style.cssText = `
+        width: 100%;
+        padding: 8px 12px;
+        border: none;
+        border-bottom: 1px solid var(--border-color, #334155);
+        background: transparent;
+        color: var(--text-primary, #e2e8f0);
+        font-size: 14px;
+        outline: none;
+        box-sizing: border-box;
+    `;
+
+    // 创建选项列表
+    const optionsList = document.createElement('div');
+    optionsList.className = 'searchable-select-options';
+
+    dropdown.appendChild(searchInput);
+    dropdown.appendChild(optionsList);
+    wrapper.appendChild(display);
+    wrapper.appendChild(dropdown);
+    select.parentNode.insertBefore(wrapper, select.nextSibling);
+
+    // 渲染选项
+    function renderOptions(filter = '') {
+        optionsList.innerHTML = '';
+        const options = select.querySelectorAll('option');
+        let hasVisible = false;
+        options.forEach(opt => {
+            const text = opt.textContent;
+            const value = opt.value;
+            if (!value) return; // 跳过空值选项
+            if (filter && !text.toLowerCase().includes(filter.toLowerCase())) return;
+            hasVisible = true;
+            const item = document.createElement('div');
+            item.style.cssText = `
+                padding: 8px 12px;
+                cursor: pointer;
+                font-size: 14px;
+                color: var(--text-primary, #e2e8f0);
+            `;
+            item.textContent = text;
+            item.dataset.value = value;
+            item.addEventListener('mouseenter', () => {
+                item.style.background = 'rgba(0,240,255,0.1)';
+            });
+            item.addEventListener('mouseleave', () => {
+                item.style.background = 'transparent';
+            });
+            item.addEventListener('click', () => {
+                select.value = value;
+                display.textContent = text;
+                dropdown.style.display = 'none';
+                select.dispatchEvent(new Event('change'));
+            });
+            optionsList.appendChild(item);
+        });
+        if (!hasVisible) {
+            optionsList.innerHTML = '<div style="padding:12px;color:var(--text-muted);text-align:center;">无匹配结果</div>';
+        }
+    }
+
+    // 显示/隐藏下拉框
+    display.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = dropdown.style.display === 'block';
+        // 关闭所有其他下拉框
+        document.querySelectorAll('.searchable-select-dropdown').forEach(d => d.style.display = 'none');
+        if (!isOpen) {
+            dropdown.style.display = 'block';
+            searchInput.value = '';
+            renderOptions();
+            setTimeout(() => searchInput.focus(), 50);
+        }
+    });
+
+    // 搜索
+    searchInput.addEventListener('input', (e) => {
+        renderOptions(e.target.value);
+    });
+
+    // 点击外部关闭
+    document.addEventListener('click', (e) => {
+        if (!wrapper.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+
+    // 同步外部修改select的值
+    const originalSetValue = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+    Object.defineProperty(select, 'value', {
+        get() { return this.getAttribute('value') || this.options[this.selectedIndex]?.value || ''; },
+        set(v) {
+            originalSetValue.call(this, v);
+            const opt = this.querySelector(`option[value="${v}"]`);
+            if (opt) display.textContent = opt.textContent;
+        }
+    });
+
+    // 初始化显示
+    if (select.value) {
+        const opt = select.querySelector(`option[value="${select.value}"]`);
+        if (opt) display.textContent = opt.textContent;
+    }
+
+    return { select, wrapper, display, dropdown, renderOptions };
+}
