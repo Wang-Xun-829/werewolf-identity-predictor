@@ -1875,29 +1875,33 @@ function renderMLStatus(status) {
     html += '<div style="font-weight:600;font-size:16px;margin-bottom:10px;color:#a855f7;">📚 模型说明</div>';
     html += '<div style="padding:16px;background:rgba(168,85,247,0.05);border-radius:8px;font-size:13px;line-height:1.8;">';
     html += '<p><strong>算法：</strong>逻辑回归（Logistic Regression）</p>';
-    html += '<p><strong>特征：</strong>从行为记录中提取29个特征，包括行为类型、目标关系、轮次、阶段等</p>';
+    html += '<p><strong>特征：</strong>从行为记录中提取' + (status.feature_count || 0) + '个特征（动态识别所有行为），包括行为类型、目标关系、轮次、阶段等</p>';
     html += '<p><strong>训练：</strong>使用已确认身份的对局数据进行监督学习</p>';
     html += '<p><strong>预测：</strong>ML模型与贝叶斯算法混合预测（几何平均），数据不足时回退到贝叶斯算法</p>';
     html += '<p><strong>优化：</strong>每局结束后自动更新模型，预测会越来越准确</p>';
     html += '</div></div>';
 
-    // 特征列表
+    // 特征列表（动态从数据库加载）
     html += '<div>';
-    html += '<div style="font-weight:600;font-size:16px;margin-bottom:10px;color:#22c55e;">🔍 特征列表</div>';
+    html += '<div style="font-weight:600;font-size:16px;margin-bottom:10px;color:#22c55e;">🔍 特征列表（共 ' + (status.feature_count || 0) + ' 个）</div>';
     html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
-    const feature_names = [
-        'jump_prophet(跳预言家)', 'check(查杀)', 'gold(发金水)', 'jump_witch(跳女巫)',
-        'jump_hunter(跳猎人)', 'jump_guard(跳守卫)', 'claim_villager(认平民)', 'vote(投票)',
-        'abstain(弃票)', 'side(站边)', 'hook(倒钩)', 'charge(冲锋)', 'self_explode(自爆)',
-        'shoot(开枪)', 'use_cure(使用解药)', 'use_poison(使用毒药)', 'guard(守护)',
-        'attack(质疑/踩)', 'idle(划水)', 'has_target(有目标)', 'round_1(第一轮)',
-        'round_2(第二轮)', 'round_3_plus(第三轮+)', 'phase_speech(发言阶段)',
-        'phase_vote(投票阶段)', 'attack_count(踩人次数)', 'defend_count(保人次数)',
-        'behavior_count(行为总数)'
-    ];
-    feature_names.forEach(f => {
-        html += `<span style="padding:4px 10px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:12px;font-size:11px;color:#22c55e;">${f}</span>`;
+
+    // 行为特征（动态加载）
+    const all_actions = status.all_actions || [];
+    all_actions.forEach(a => {
+        html += `<span style="padding:4px 10px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:12px;font-size:11px;color:#22c55e;">${escapeHtml(a.name)}</span>`;
     });
+
+    // 固定特征
+    const fixed_features = [
+        'has_target(有目标)', 'round_1(第一轮)', 'round_2(第二轮)', 'round_3_plus(第三轮+)',
+        'phase_speech(发言阶段)', 'phase_vote(投票阶段)', 'attack_count(踩人次数)',
+        'defend_count(保人次数)', 'behavior_count(行为总数)'
+    ];
+    fixed_features.forEach(f => {
+        html += `<span style="padding:4px 10px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);border-radius:12px;font-size:11px;color:#3b82f6;">${f}</span>`;
+    });
+
     html += '</div></div>';
 
     content.innerHTML = html;

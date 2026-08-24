@@ -339,12 +339,21 @@ def get_ml_model_status():
     models = query_all("SELECT * FROM ml_models")
     trained_models = len(models)
 
+    # 动态获取所有行为和特征
+    all_actions = query_all("SELECT id, name FROM actions ORDER BY id")
+    action_features = get_all_action_features()
+    all_features = get_all_features()
+
     return {
         'game_count': game_count,
         'identity_count': identity_count,
         'trained_models': trained_models,
         'min_samples': ML_MIN_SAMPLES,
-        'ready': identity_count >= ML_MIN_SAMPLES
+        'ready': identity_count >= ML_MIN_SAMPLES,
+        'all_actions': all_actions,
+        'action_features': action_features,
+        'all_features': all_features,
+        'feature_count': len(all_features)
     }
 
 
