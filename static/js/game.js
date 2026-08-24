@@ -339,23 +339,14 @@ async function addBehavior() {
     const targetId = document.getElementById('behavior-target').value;
     const roleId = document.getElementById('behavior-role').value;
     const camp = document.getElementById('behavior-camp').value;
-    const round = document.getElementById('behavior-round').value;
-    const phase = document.getElementById('behavior-phase').value;
     const notes = document.getElementById('behavior-notes').value.trim();
 
     if (targetId) data.target_id = parseInt(targetId);
     if (roleId) data.actor_role_id = parseInt(roleId);
     if (camp) data.actor_camp = camp;
-    // 如果用户没有手动设置轮次，自动使用当前游戏轮次
-    if (round) {
-        data.round_number = parseInt(round);
-    } else if (currentGamePhase) {
+    // 自动使用当前游戏轮次和阶段
+    if (currentGamePhase) {
         data.round_number = currentGamePhase.round;
-    }
-    // 如果用户没有手动设置阶段，自动使用当前游戏阶段
-    if (phase) {
-        data.phase = phase;
-    } else if (currentGamePhase) {
         data.phase = currentGamePhase.phase;
     }
     if (notes) data.notes = notes;
@@ -1167,10 +1158,6 @@ async function loadCurrentPhase() {
         currentGamePhase = phase;  // 保存到全局变量
         document.getElementById('current-phase-display').textContent =
             '第' + phase.round + '轮 ' + phase.display;
-        const phaseSelect = document.getElementById('behavior-phase');
-        if (phaseSelect) {
-            phaseSelect.value = phase.phase;
-        }
     }
 }
 

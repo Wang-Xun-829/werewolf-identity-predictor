@@ -23,9 +23,8 @@ from db import query_one, execute_write, ph
 # ============================================================
 # 阶段定义
 # ============================================================
-# 每一轮的标准阶段顺序（第一天）
+# 每一轮的标准阶段顺序（第一天，没有夜间行动）
 PHASE_FLOW_DAY1 = [
-    '夜间行动',      # 黑夜：狼人杀人、女巫用药、守卫守护、预言家查验
     '警上发言',      # 白天：竞选警长发言
     '警徽投票',      # 白天：投票选警长
     '死讯公布',      # 白天：法官宣布昨夜死讯
@@ -34,9 +33,8 @@ PHASE_FLOW_DAY1 = [
     '遗言',          # 白天：被放逐玩家留遗言
 ]
 
-# 第二天及以后的标准阶段顺序（没有警上发言和警徽投票）
+# 第二天及以后的标准阶段顺序（没有警上发言、警徽投票和夜间行动）
 PHASE_FLOW_NORMAL = [
-    '夜间行动',
     '死讯公布',
     '白天发言',
     '放逐投票',
@@ -82,7 +80,7 @@ def _get_game_state(game_id):
     if not game:
         return None
     return {
-        'phase': game['current_phase'] or '夜间行动',
+        'phase': game['current_phase'] or '警上发言',
         'round': game['current_round'] or 1,
         'sheriff_interrupted': game['sheriff_interrupted'] or 0,
     }
@@ -153,9 +151,9 @@ def advance_phase(game_id, pk_round=False):
         _update_game_state(game_id, next_phase, next_round)
         return get_current_phase(game_id)
 
-    # 特殊处理3：遗言后进入下一轮
+    # 特殊处理3：遗言后进入下一轮（下一轮从死讯公布开始，因为第一天已经过了）
     if current_phase == '遗言':
-        next_phase = '夜间行动'
+        next_phase = '死讯公布'
         next_round = current_round + 1
         _update_game_state(game_id, next_phase, next_round)
         return get_current_phase(game_id)
@@ -168,13 +166,6 @@ def advance_phase(game_id, pk_round=False):
         else:
             next_phase = '遗言'
             next_round = current_round
-        _update_game_state(game_id, next_phase, next_round)
-        return get_current_phase(game_id)
-
-    # 特殊处理5：夜间行动结束后，如果sheriff_interrupted=1，进入"退水自爆"环节
-    if current_phase == '夜间行动' and sheriff_interrupted:
-        next_phase = '退水自爆'
-        next_round = current_round
         _update_game_state(game_id, next_phase, next_round)
         return get_current_phase(game_id)
 
@@ -225,8 +216,8 @@ def wolf_self_explode(game_id):
 
     # 特殊情况1：第一天警上发言阶段，警徽未落地（还没到警徽投票）
     if current_round == 1 and current_phase == '警上发言' and not sheriff_interrupted:
-        # 直接进入黑夜，设置中断标志
-        next_phase = '夜间行动'
+        # 直接进入第二天的"退水自爆"环节（夜间行动不需要记录）
+        next_phase = '退水自爆'
         next_round = current_round + 1
         next_sheriff = 1  # 标记警上中断
         _update_game_state(game_id, next_phase, next_round, next_sheriff)
@@ -234,39 +225,18 @@ def wolf_self_explode(game_id):
 
     # 特殊情况2：处于"退水自爆"阶段，狼人再次自爆
     if current_phase == '退水自爆':
-        # 直接进入黑夜，清除中断标志（之后不再有警上发言）
-        next_phase = '夜间行动'
-        next_round = current_round + 1
+        # 直接进入第二天的"死讯公布"（夜间行动不需要记录，之后不再有警上发言）
+        next_phase = '死讯公布'
+        next_round = current_round
         next_sheriff = 0  # 清除中断标志，之后正常流程
         _update_game_state(game_id, next_phase, next_round, next_sheriff)
         return get_current_phase(game_id)
 
-    # 正常情况：直接进入下一个黑夜
-    next_phase = '夜间行动'
+    # 正常情况：直接进入下一天的"死讯公布"（夜间行动不需要记录）
+    next_phase = '死讯公布'
     next_round = current_round + 1
     _update_game_state(game_id, next_phase, next_round)
     return get_current_phase(game_id)
-
-
-def after_night_phase(game_id):
-    """夜间行动结束后，判断是否需要进入"退水自爆"环节
-
-    这个函数应该在夜间行动结束、推进到下一阶段时调用。
-    如果sheriff_interrupted=1，则进入"退水自爆"环节而不是死讯公布。
-
-    返回：
-        新的阶段信息
-    """
-    state = _get_game_state(game_id)
-    if not state:
-        return None
-
-    if state['sheriff_interrupted'] and state['phase'] == '夜间行动':
-        # 进入退水自爆环节
-        _update_game_state(game_id, '退水自爆', state['round'])
-        return get_current_phase(game_id)
-
-    return None
 
 
 def set_phase(game_id, phase, round_number=None):
@@ -293,8 +263,8 @@ def set_phase(game_id, phase, round_number=None):
 
 
 def init_game_phase(game_id):
-    """初始化新对局的阶段（第一轮夜间行动）"""
+    """初始化新对局的阶段（第一天从警上发言开始，夜间行动不需要记录）"""
     execute_write(
         f"UPDATE games SET current_phase = {ph()}, current_round = 1, sheriff_interrupted = 0 WHERE id = {ph()}",
-        ('夜间行动', game_id)
+        ('警上发言', game_id)
     )
