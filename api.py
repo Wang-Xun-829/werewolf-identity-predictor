@@ -214,16 +214,19 @@ def list_actions():
 
 @api.route('/actions', methods=['POST'])
 def create_action():
-    """新增行为"""
+    """新增行为（支持指定父行为，实现分级）"""
     data = request.get_json() or {}
     name = data.get('name', '').strip()
     description = data.get('description', '')
     default_weight = data.get('default_weight', 1.0)
+    parent_id = data.get('parent_id')
     if not name:
         return fail("行为名称不能为空")
+    if parent_id:
+        parent_id = int(parent_id)
     new_id = execute_write(
-        f"INSERT INTO actions (name, description, default_weight) VALUES ({ph()}, {ph()}, {ph()})",
-        (name, description, default_weight)
+        f"INSERT INTO actions (name, description, default_weight, parent_id) VALUES ({ph()}, {ph()}, {ph()}, {ph()})",
+        (name, description, default_weight, parent_id)
     )
     action = query_one("SELECT * FROM actions WHERE id = " + ph(), (new_id,))
     return ok(action, "行为创建成功")
@@ -231,7 +234,7 @@ def create_action():
 
 @api.route('/actions/<int:action_id>', methods=['PUT'])
 def update_action(action_id):
-    """修改行为"""
+    """修改行为（支持修改父行为）"""
     data = request.get_json() or {}
     action = query_one("SELECT * FROM actions WHERE id = " + ph(), (action_id,))
     if not action:
@@ -240,9 +243,12 @@ def update_action(action_id):
     description = data.get('description', action['description'])
     default_weight = data.get('default_weight', action['default_weight'])
     is_active = data.get('is_active', action['is_active'])
+    parent_id = data.get('parent_id', action.get('parent_id'))
+    if parent_id:
+        parent_id = int(parent_id)
     execute_write(
-        f"UPDATE actions SET name={ph()}, description={ph()}, default_weight={ph()}, is_active={ph()} WHERE id={ph()}",
-        (name, description, default_weight, is_active, action_id)
+        f"UPDATE actions SET name={ph()}, description={ph()}, default_weight={ph()}, is_active={ph()}, parent_id={ph()} WHERE id={ph()}",
+        (name, description, default_weight, is_active, parent_id, action_id)
     )
     action = query_one("SELECT * FROM actions WHERE id = " + ph(), (action_id,))
     return ok(action, "行为更新成功")
@@ -455,7 +461,13 @@ def add_game_player(game_id):
 
 @api.route('/games/<int:game_id>/players/<int:player_id>', methods=['DELETE'])
 def remove_game_player(game_id, player_id):
-    """从对局移除玩家"""
+    """从对局移除玩家（级联删除该玩家的行为记录）"""
+    # 删除该玩家作为发起者或目标的行为记录
+    execute_write(
+        f"DELETE FROM behavior_records WHERE game_id={ph()} AND (actor_id={ph()} OR target_id={ph()})",
+        (game_id, player_id, player_id)
+    )
+    # 从对局玩家列表中移除
     execute_write(
         f"DELETE FROM game_players WHERE game_id={ph()} AND player_id={ph()}",
         (game_id, player_id)
@@ -587,6 +599,45 @@ def create_behavior(game_id):
     )
     behavior = query_one("SELECT * FROM behavior_records WHERE id = " + ph(), (new_id,))
     return ok(behavior, "行为记录创建成功")
+
+
+@api.route('/games/<int:game_id>/behaviors/batch', methods=['POST'])
+def create_behaviors_batch(game_id):
+    """批量新增行为记录（同一发起者/目标/声明，多个不同行为）
+    必填：actor_id, action_ids（数组）
+    可空：target_id, actor_role_id, actor_camp, round_number, phase, notes
+    """
+    data = request.get_json() or {}
+    actor_id = data.get('actor_id')
+    action_ids = data.get('action_ids', [])
+    target_id = data.get('target_id')
+    actor_role_id = data.get('actor_role_id')
+    actor_camp = data.get('actor_camp')
+    round_number = data.get('round_number')
+    phase = data.get('phase')
+    notes = data.get('notes', '')
+
+    if not actor_id:
+        return fail("行为发起者ID不能为空")
+    if not action_ids or len(action_ids) === 0:
+        return fail("请至少选择一个行为")
+
+    # 检查对局是否存在
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+
+    created_ids = []
+    for action_id in action_ids:
+        new_id = execute_write(
+            f"""INSERT INTO behavior_records
+                (game_id, actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes)
+                VALUES ({ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()})""",
+            (game_id, actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes)
+        )
+        created_ids.append(new_id)
+
+    return ok({"created_count": len(created_ids), "created_ids": created_ids}, f"成功创建 {len(created_ids)} 条行为记录")
 
 
 @api.route('/behaviors/<int:behavior_id>', methods=['PUT'])

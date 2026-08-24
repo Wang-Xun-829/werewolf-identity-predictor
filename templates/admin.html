@@ -74,9 +74,16 @@
             <input type="text" class="form-control" id="action-name" placeholder="例如：跳预言家">
         </div>
         <div class="form-group">
+            <label>父行为（用于分级，可选）</label>
+            <select class="form-control" id="action-parent">
+                <option value="">无（一级行为）</option>
+            </select>
+            <small style="color:#94a3b8;">选择父行为后，该行为将作为子行为，拥有独立权重；父行为权重由所有子行为综合计算</small>
+        </div>
+        <div class="form-group">
             <label>默认权重</label>
             <input type="number" class="form-control" id="action-weight" value="1.0" step="0.1" min="0.1">
-            <small style="color:#999;">权重越高，该行为的信息量越大（贝叶斯先验）</small>
+            <small style="color:#94a3b8;">权重越高，该行为的信息量越大（贝叶斯先验）</small>
         </div>
         <div class="form-group">
             <label>描述</label>

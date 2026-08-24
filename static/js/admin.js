@@ -109,13 +109,32 @@ async function loadActions() {
         container.innerHTML = '<div class="empty-state"><p>暂无行为</p></div>';
         return;
     }
+    // 保存所有行为列表，供父行为选择使用
+    window._allActions = result.data;
     let html = '<table class="table"><thead><tr>';
-    html += '<th>ID</th><th>名称</th><th>默认权重</th><th>描述</th><th>操作</th>';
+    html += '<th>ID</th><th>名称</th><th>层级</th><th>默认权重</th><th>描述</th><th>操作</th>';
     html += '</tr></thead><tbody>';
+
+    // 树形展示：先一级行为，再缩进显示子行为
+    const parentToChildren = {};
+    const rootActions = [];
     result.data.forEach(a => {
-        html += `<tr>
+        if (a.parent_id) {
+            if (!parentToChildren[a.parent_id]) parentToChildren[a.parent_id] = [];
+            parentToChildren[a.parent_id].push(a);
+        } else {
+            rootActions.push(a);
+        }
+    });
+
+    function renderActionRow(a, level) {
+        const indent = level > 0 ? '&nbsp;&nbsp;&nbsp;&nbsp;'.repeat(level) + '└ ' : '';
+        const levelLabel = level === 0 ? '一级' : level === 1 ? '二级' : '三级';
+        const levelClass = level === 0 ? 'badge-info' : level === 1 ? 'badge-good' : 'badge-third';
+        html += `<tr class="${level > 0 ? 'child-action-row' : ''}">
             <td>${a.id}</td>
-            <td><strong>${escapeHtml(a.name)}</strong></td>
+            <td>${indent}<strong>${escapeHtml(a.name)}</strong></td>
+            <td><span class="badge ${levelClass}">${levelLabel}</span></td>
             <td>${a.default_weight}</td>
             <td>${escapeHtml(a.description || '-')}</td>
             <td class="actions">
@@ -123,9 +142,27 @@ async function loadActions() {
                 <button class="btn btn-danger btn-sm" onclick="deleteAction(${a.id})">删除</button>
             </td>
         </tr>`;
-    });
+        // 递归渲染子行为
+        const children = parentToChildren[a.id] || [];
+        children.forEach(child => renderActionRow(child, level + 1));
+    }
+
+    rootActions.forEach(a => renderActionRow(a, 0));
     html += '</tbody></table>';
     container.innerHTML = html;
+}
+
+// 填充父行为下拉选择
+function populateParentSelect(excludeId) {
+    const select = document.getElementById('action-parent');
+    select.innerHTML = '<option value="">无（一级行为）</option>';
+    // 只显示一级行为作为父行为（目前支持2级，如需3级可放开）
+    const rootActions = (window._allActions || []).filter(a => !a.parent_id);
+    rootActions.forEach(a => {
+        if (a.id !== excludeId) {
+            select.innerHTML += `<option value="${a.id}">${escapeHtml(a.name)}</option>`;
+        }
+    });
 }
 
 function showActionModal() {
@@ -134,6 +171,7 @@ function showActionModal() {
     document.getElementById('action-name').value = '';
     document.getElementById('action-weight').value = '1.0';
     document.getElementById('action-desc').value = '';
+    populateParentSelect(null);
     document.getElementById('action-modal').classList.add('show');
 }
 
@@ -143,15 +181,19 @@ function editAction(a) {
     document.getElementById('action-name').value = a.name;
     document.getElementById('action-weight').value = a.default_weight;
     document.getElementById('action-desc').value = a.description || '';
+    populateParentSelect(a.id);
+    document.getElementById('action-parent').value = a.parent_id || '';
     document.getElementById('action-modal').classList.add('show');
 }
 
 async function saveAction() {
     const id = document.getElementById('edit-action-id').value;
+    const parentId = document.getElementById('action-parent').value;
     const data = {
         name: document.getElementById('action-name').value.trim(),
         default_weight: parseFloat(document.getElementById('action-weight').value) || 1.0,
-        description: document.getElementById('action-desc').value.trim()
+        description: document.getElementById('action-desc').value.trim(),
+        parent_id: parentId ? parseInt(parentId) : null
     };
     if (!data.name) { showToast('请输入行为名称', 'error'); return; }
     const result = id

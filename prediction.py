@@ -1209,8 +1209,17 @@ def predict_game(game_id):
     role_names = {r["id"]: r["name"] for r in all_roles}
     role_camps = {r["id"]: r["camp"] for r in all_roles}
 
-    all_actions = query_all("SELECT id, name, default_weight FROM actions WHERE is_active = TRUE")
+    all_actions = query_all("SELECT id, name, default_weight, parent_id FROM actions WHERE is_active = TRUE")
     action_defaults = {a["id"]: a.get("default_weight", 1.0) for a in all_actions}
+
+    # 构建行为父子关系：父行为ID -> 子行为ID列表
+    parent_to_children = {}
+    for a in all_actions:
+        pid = a.get("parent_id")
+        if pid:
+            if pid not in parent_to_children:
+                parent_to_children[pid] = []
+            parent_to_children[pid].append(a["id"])
 
     if not role_ids or not all_actions:
         return {}
@@ -1218,9 +1227,10 @@ def predict_game(game_id):
     # 4. 计算版型先验（作为基础先验）
     setup_prior = calculate_prior(game_id)
 
-    # 5. 获取算法权重 {(action_id, role_id): weight}
+    # 5. 获取算法权重 {(action_id, role_id): {"weight": float, "sample_count": int}}
     weights = get_all_weights()
     weight_map = {k: v["weight"] for k, v in weights.items()}
+    sample_count_map = {k: v.get("sample_count", 0) for k, v in weights.items()}
 
     # 6. 第一阶段：计算所有玩家的基础预测（不考虑目标信息）
     base_log_probs = {}  # 保存每个玩家的基础对数概率，用于第二阶段修正
@@ -1242,8 +1252,21 @@ def predict_game(game_id):
             action_id = b["action_id"]
             default_w = action_defaults.get(action_id, 1.0)
             for rid in role_ids:
-                # 直接用 weight 作为相对似然度，不按身份归一化
-                w = weight_map.get((action_id, rid), default_w)
+                # 获取有效权重：如果行为有子行为，使用子行为的综合权重（按样本数加权平均）
+                children = parent_to_children.get(action_id, [])
+                if children:
+                    # 父行为：综合权重 = 子行为权重按sample_count加权平均
+                    total_weighted = 0.0
+                    total_samples = 0
+                    for child_id in children:
+                        child_w = weight_map.get((child_id, rid), action_defaults.get(child_id, 1.0))
+                        child_samples = sample_count_map.get((child_id, rid), 0)
+                        total_weighted += child_w * max(child_samples, 1)
+                        total_samples += max(child_samples, 1)
+                    w = total_weighted / total_samples if total_samples > 0 else default_w
+                else:
+                    # 子行为或一级行为：使用自己的独立权重
+                    w = weight_map.get((action_id, rid), default_w)
                 log_probs[rid] += math.log(max(w, 0.0001))
 
                 # 改进#第四阶段：个性化似然度修正

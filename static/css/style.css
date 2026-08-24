@@ -668,6 +668,152 @@ textarea.form-control { resize: vertical; min-height: 80px; }
     margin-left: 8px;
 }
 
+.bookmark-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(255, 68, 102, 0.15);
+    color: var(--neon-red);
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.bookmark-remove:hover {
+    opacity: 1;
+    background: rgba(255, 68, 102, 0.3);
+    box-shadow: 0 0 10px rgba(255, 68, 102, 0.4);
+    transform: scale(1.1);
+}
+
+/* ============================================================
+   行为多选标签
+   ============================================================ */
+.action-multi-select {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.action-search-input {
+    width: 100%;
+}
+
+.selected-actions-info {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+    padding: 4px 0;
+}
+
+.selected-actions-info.has-selection {
+    color: var(--neon-cyan);
+    text-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+}
+
+.action-tags-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background: rgba(10, 14, 26, 0.4);
+}
+
+.action-tag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 10px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
+    background: rgba(255, 255, 255, 0.02);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    position: relative;
+}
+
+.action-tag:hover {
+    background: rgba(0, 240, 255, 0.06);
+    border-color: var(--border-glow);
+    transform: translateY(-1px);
+}
+
+.action-tag.selected {
+    background: rgba(0, 240, 255, 0.12);
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 12px rgba(0, 240, 255, 0.25);
+}
+
+.action-tag-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.3;
+    word-break: break-all;
+}
+
+.action-tag.selected .action-tag-name {
+    color: var(--neon-cyan);
+    font-weight: 600;
+}
+
+.action-tag-check {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    font-size: 10px;
+    color: var(--neon-cyan);
+    font-weight: 700;
+}
+
+/* 行为库树形展示 */
+.child-action-row {
+    background: rgba(0, 240, 255, 0.02);
+}
+
+.child-action-row td {
+    color: var(--text-secondary);
+}
+
+.child-action-row:hover td {
+    background: rgba(0, 240, 255, 0.05) !important;
+}
+
+/* 行为录入子行为标签样式 */
+.action-tag.child-tag {
+    background: rgba(139, 92, 246, 0.05);
+    border-color: rgba(139, 92, 246, 0.2);
+    font-size: 11px;
+    padding: 8px 6px;
+}
+
+.action-tag.child-tag:hover {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: rgba(139, 92, 246, 0.4);
+}
+
+.action-tag.child-tag.selected {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: var(--neon-purple);
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
+}
+
+.action-tag.child-tag.selected .action-tag-name {
+    color: var(--neon-purple);
+}
+
 /* ============================================================
    行为记录
    ============================================================ */

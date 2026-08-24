@@ -56,21 +56,21 @@
                     </select>
                 </div>
             </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>具体行为 <span class="required">*</span></label>
-                    <div class="autocomplete" id="action-autocomplete">
-                        <input type="text" class="form-control" id="behavior-action-input" placeholder="输入行为名称搜索..." autocomplete="off">
-                        <input type="hidden" id="behavior-action" value="">
-                        <div class="autocomplete-dropdown" id="action-dropdown"></div>
+            <div class="form-group">
+                <label>具体行为（可多选） <span class="required">*</span></label>
+                <div class="action-multi-select">
+                    <input type="text" class="form-control action-search-input" id="behavior-action-search" placeholder="输入行为名称搜索..." autocomplete="off">
+                    <div class="selected-actions-info" id="selected-actions-info">已选 0 个行为</div>
+                    <div class="action-tags-grid" id="action-tags-grid">
+                        <div class="empty-state"><p>加载中...</p></div>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label>发起者声明身份</label>
-                    <select class="form-control" id="behavior-role">
-                        <option value="">不声明</option>
-                    </select>
-                </div>
+            </div>
+            <div class="form-group">
+                <label>发起者声明身份</label>
+                <select class="form-control" id="behavior-role">
+                    <option value="">不声明</option>
+                </select>
             </div>
             <!-- 高级选项（默认折叠） -->
             <div class="advanced-options">

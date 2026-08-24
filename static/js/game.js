@@ -73,8 +73,8 @@ function populateSelects() {
         targetSelect.innerHTML += `<option value="${gp.player_id}">${seat}${escapeHtml(gp.player_name)}</option>`;
     });
 
-    // 行为选择使用 autocomplete 搜索框（不再用 select）
-    initActionAutocomplete();
+    // 行为选择使用多选标签
+    initActionMultiSelect();
 
     roleSelect.innerHTML = '<option value="">不声明</option>';
     allRoles.forEach(r => {
@@ -118,9 +118,13 @@ function renderPlayerBookmarks() {
         const isActive = p.player_id === selectedPlayerId;
         const topCamp = p.all_probabilities && p.all_probabilities[0] ? p.all_probabilities[0].camp : '';
         const topRoleCls = getCampClass(topCamp);
+        const canRemove = gameData && gameData.status === '进行中';
         html += `<div class="player-bookmark ${isActive ? 'active' : ''}" onclick="selectPlayer(${p.player_id})">
             <span class="bookmark-name">${seatLabel}${escapeHtml(p.player_name)}</span>
-            <span class="bookmark-role badge badge-${topRoleCls}">${escapeHtml(p.top_role_name || '-')}</span>
+            <span style="display:flex;align-items:center;gap:6px;">
+                <span class="bookmark-role badge badge-${topRoleCls}">${escapeHtml(p.top_role_name || '-')}</span>
+                ${canRemove ? `<span class="bookmark-remove" onclick="event.stopPropagation(); removePlayerFromGame(${p.player_id}, '${escapeHtml(p.player_name)}')" title="移除玩家">✕</span>` : ''}
+            </span>
         </div>`;
     });
     container.innerHTML = html;
@@ -131,6 +135,21 @@ function selectPlayer(playerId) {
     selectedPlayerId = playerId;
     renderPlayerBookmarks();
     renderSelectedPlayerPrediction();
+}
+
+// 从对局移除玩家
+async function removePlayerFromGame(playerId, playerName) {
+    if (!confirmAction(`确定要从对局中移除玩家「${playerName}」吗？该玩家的所有行为记录也将被删除。`)) return;
+    const result = await api('DELETE', `/games/${gameId}/players/${playerId}`);
+    if (result) {
+        showToast(`玩家「${playerName}」已移除`, 'success');
+        // 如果移除的是当前选中的玩家，清空选中
+        if (selectedPlayerId === playerId) {
+            selectedPlayerId = null;
+        }
+        await loadGame();
+        await refreshPredictions();
+    }
 }
 
 // 渲染选中玩家的详细预测结果
@@ -202,16 +221,15 @@ function renderBehaviors(behaviors) {
     container.innerHTML = html;
 }
 
-// 添加行为
+// 添加行为（批量）
 async function addBehavior() {
     const actorId = document.getElementById('behavior-actor').value;
-    const actionId = document.getElementById('behavior-action').value;
     if (!actorId) { showToast('请选择行为发起者', 'error'); return; }
-    if (!actionId) { showToast('请选择具体行为', 'error'); return; }
+    if (selectedActionIds.length === 0) { showToast('请至少选择一个行为', 'error'); return; }
 
     const data = {
         actor_id: parseInt(actorId),
-        action_id: parseInt(actionId)
+        action_ids: selectedActionIds.map(id => parseInt(id))
     };
     const targetId = document.getElementById('behavior-target').value;
     const roleId = document.getElementById('behavior-role').value;
@@ -227,13 +245,13 @@ async function addBehavior() {
     if (phase) data.phase = phase;
     if (notes) data.notes = notes;
 
-    const result = await api('POST', `/games/${gameId}/behaviors`, data);
+    const result = await api('POST', `/games/${gameId}/behaviors/batch`, data);
     if (result) {
-        showToast('行为已录入', 'success');
-        // 清空表单部分字段
+        const count = result.data ? result.data.created_count : selectedActionIds.length;
+        showToast(`成功录入 ${count} 条行为`, 'success');
+        // 清空表单
         document.getElementById('behavior-notes').value = '';
-        document.getElementById('behavior-action-input').value = '';
-        document.getElementById('behavior-action').value = '';
+        clearSelectedActions();
         // 重新加载
         await loadGame();
     }
@@ -415,80 +433,34 @@ function hideModal(id) {
 }
 
 // ============================================================
-// 行为搜索自动补全（Autocomplete）
+// 行为多选标签（Multi-Select Tags）
 // ============================================================
-let actionAutocompleteState = {
-    selectedIndex: -1,
-    filteredActions: []
-};
+let selectedActionIds = [];  // 已选中的行为ID列表
 
-function initActionAutocomplete() {
-    const input = document.getElementById('behavior-action-input');
-    const dropdown = document.getElementById('action-dropdown');
-    if (!input || !dropdown) return;
-
-    // 聚焦时显示所有行为（按字母排序）
-    input.addEventListener('focus', () => {
-        renderActionDropdown('');
-        dropdown.classList.add('show');
-    });
+function initActionMultiSelect() {
+    const searchInput = document.getElementById('behavior-action-search');
+    const tagsGrid = document.getElementById('action-tags-grid');
+    if (!searchInput || !tagsGrid) return;
 
     // 输入时实时过滤
-    input.addEventListener('input', (e) => {
-        const keyword = e.target.value.trim().toLowerCase();
-        renderActionDropdown(keyword);
-        dropdown.classList.add('show');
-        // 用户重新输入时清空已选中的隐藏值
-        document.getElementById('behavior-action').value = '';
+    searchInput.addEventListener('input', (e) => {
+        renderActionTags(e.target.value.trim().toLowerCase());
     });
 
-    // 键盘导航（上下箭头选择、回车确认、ESC关闭）
-    input.addEventListener('keydown', (e) => {
-        const items = dropdown.querySelectorAll('.autocomplete-item');
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            actionAutocompleteState.selectedIndex = Math.min(
-                actionAutocompleteState.selectedIndex + 1,
-                items.length - 1
-            );
-            updateActiveItem(items);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            actionAutocompleteState.selectedIndex = Math.max(
-                actionAutocompleteState.selectedIndex - 1,
-                0
-            );
-            updateActiveItem(items);
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if (actionAutocompleteState.selectedIndex >= 0 && items[actionAutocompleteState.selectedIndex]) {
-                items[actionAutocompleteState.selectedIndex].click();
-            }
-        } else if (e.key === 'Escape') {
-            dropdown.classList.remove('show');
-        }
+    // 事件委托：点击标签选中/取消选中
+    tagsGrid.addEventListener('click', (e) => {
+        const tag = e.target.closest('.action-tag');
+        if (!tag) return;
+        const id = parseInt(tag.dataset.id);
+        toggleAction(id);
     });
 
-    // 点击输入框外部时关闭下拉
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('#action-autocomplete')) {
-            dropdown.classList.remove('show');
-        }
-    });
-
-    // 事件委托：点击下拉项时选中（避免内联onclick的引号冲突）
-    dropdown.addEventListener('click', (e) => {
-        const item = e.target.closest('.autocomplete-item');
-        if (!item) return;
-        const id = parseInt(item.dataset.id);
-        const name = item.dataset.name;
-        const index = parseInt(item.dataset.index);
-        selectAction(id, name, index);
-    });
+    // 初始渲染
+    renderActionTags('');
 }
 
-function renderActionDropdown(keyword) {
-    const dropdown = document.getElementById('action-dropdown');
+function renderActionTags(keyword) {
+    const grid = document.getElementById('action-tags-grid');
     // 过滤：匹配行为名称或描述
     const filtered = keyword
         ? allActions.filter(a =>
@@ -497,40 +469,64 @@ function renderActionDropdown(keyword) {
         )
         : allActions;
 
-    actionAutocompleteState.filteredActions = filtered;
-    actionAutocompleteState.selectedIndex = -1;
-
     if (filtered.length === 0) {
-        dropdown.innerHTML = '<div class="autocomplete-empty">未找到匹配的行为，可去库管理页新增</div>';
+        grid.innerHTML = '<div class="empty-state"><p>未找到匹配的行为</p></div>';
         return;
     }
 
+    // 构建父子关系，树形展示
+    const parentToChildren = {};
+    const rootActions = [];
+    filtered.forEach(a => {
+        if (a.parent_id && filtered.find(x => x.id === a.parent_id)) {
+            if (!parentToChildren[a.parent_id]) parentToChildren[a.parent_id] = [];
+            parentToChildren[a.parent_id].push(a);
+        } else {
+            rootActions.push(a);
+        }
+    });
+
     let html = '';
-    filtered.forEach((a, index) => {
-        html += `<div class="autocomplete-item" data-id="${a.id}" data-name="${escapeHtml(a.name)}" data-index="${index}">
-            <strong>${escapeHtml(a.name)}</strong>
-            ${a.description ? `<div class="item-desc">${escapeHtml(a.description)}</div>` : ''}
+    function renderActionTag(a, level) {
+        const isSelected = selectedActionIds.includes(a.id);
+        const hasChildren = parentToChildren[a.id] && parentToChildren[a.id].length > 0;
+        const indent = level > 0 ? 'style="margin-left:' + (level * 16) + 'px;"' : '';
+        html += `<div class="action-tag ${isSelected ? 'selected' : ''} ${level > 0 ? 'child-tag' : ''}" data-id="${a.id}" ${indent}>
+            <span class="action-tag-name">${hasChildren ? '📁 ' : ''}${escapeHtml(a.name)}</span>
+            ${isSelected ? '<span class="action-tag-check">✓</span>' : ''}
         </div>`;
-    });
-    dropdown.innerHTML = html;
-}
-
-function selectAction(id, name, index) {
-    document.getElementById('behavior-action').value = id;
-    document.getElementById('behavior-action-input').value = name;
-    document.getElementById('action-dropdown').classList.remove('show');
-    actionAutocompleteState.selectedIndex = index;
-}
-
-function updateActiveItem(items) {
-    items.forEach((item, i) => {
-        item.classList.toggle('active', i === actionAutocompleteState.selectedIndex);
-    });
-    // 自动滚动到选中项
-    const active = items[actionAutocompleteState.selectedIndex];
-    if (active) {
-        active.scrollIntoView({ block: 'nearest' });
+        // 递归渲染子行为
+        const children = parentToChildren[a.id] || [];
+        children.forEach(child => renderActionTag(child, level + 1));
     }
+
+    rootActions.forEach(a => renderActionTag(a, 0));
+    grid.innerHTML = html;
+    updateSelectedActionsInfo();
+}
+
+function toggleAction(id) {
+    const index = selectedActionIds.indexOf(id);
+    if (index >= 0) {
+        selectedActionIds.splice(index, 1);
+    } else {
+        selectedActionIds.push(id);
+    }
+    renderActionTags(document.getElementById('behavior-action-search').value.trim().toLowerCase());
+}
+
+function updateSelectedActionsInfo() {
+    const info = document.getElementById('selected-actions-info');
+    if (info) {
+        info.textContent = `已选 ${selectedActionIds.length} 个行为`;
+        info.className = `selected-actions-info ${selectedActionIds.length > 0 ? 'has-selection' : ''}`;
+    }
+}
+
+function clearSelectedActions() {
+    selectedActionIds = [];
+    document.getElementById('behavior-action-search').value = '';
+    renderActionTags('');
 }
 
 // 展开/收起高级选项

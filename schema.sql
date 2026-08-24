@@ -14,14 +14,16 @@ CREATE TABLE IF NOT EXISTS roles (
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. 行为库（可增删改）
+-- 2. 行为库（可增删改，支持2-3级分级）
 CREATE TABLE IF NOT EXISTS actions (
     id             SERIAL PRIMARY KEY,
-    name           VARCHAR(50) NOT NULL UNIQUE,  -- 行为名称：跳预言家、查杀、发金水...
+    name           VARCHAR(50) NOT NULL,           -- 行为名称：跳预言家、查杀、发金水...
     description    TEXT,
     default_weight REAL DEFAULT 1.0,              -- 默认权重（贝叶斯先验）
+    parent_id      INTEGER REFERENCES actions(id) ON DELETE SET NULL,  -- 父行为ID（NULL表示一级行为）
     is_active      BOOLEAN DEFAULT TRUE,
-    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(name, parent_id)                        -- 同一父行为下子行为名称唯一
 );
 
 -- 3. 版型库（可增删改）
