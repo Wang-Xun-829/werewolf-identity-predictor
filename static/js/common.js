@@ -172,8 +172,9 @@ function initSearchableSelect(selectId, placeholder = '搜索...') {
         options.forEach(opt => {
             const text = opt.textContent;
             const value = opt.value;
-            if (!value) return; // 跳过空值选项
-            if (filter && !text.toLowerCase().includes(filter.toLowerCase())) return;
+            // 空值选项也显示（如"无目标"），但搜索时不匹配空值
+            if (filter && value && !text.toLowerCase().includes(filter.toLowerCase())) return;
+            if (filter && !value) return; // 搜索时隐藏空值选项
             hasVisible = true;
             const item = document.createElement('div');
             item.style.cssText = `
