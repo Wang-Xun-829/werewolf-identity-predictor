@@ -403,8 +403,23 @@ function showAddPlayerModal() {
         return;
     }
 
+    // 清空搜索框
+    document.getElementById('add-player-search').value = '';
+    // 渲染玩家列表
+    renderAddPlayerList(allPlayers, addedIds);
+    updateSelectedCount();
+    document.getElementById('add-player-modal').classList.add('show');
+}
+
+// 渲染玩家列表（可过滤）
+function renderAddPlayerList(players, addedIds) {
+    const list = document.getElementById('add-player-list');
+    if (players.length === 0) {
+        list.innerHTML = '<div class="empty-state"><p>没有找到匹配的玩家</p></div>';
+        return;
+    }
     let html = '';
-    allPlayers.forEach(p => {
+    players.forEach(p => {
         const inGame = addedIds.has(p.id);
         html += `<label>
             <input type="checkbox" value="${p.id}" ${inGame ? 'checked disabled' : ''} onchange="updateSelectedCount()">
@@ -413,8 +428,18 @@ function showAddPlayerModal() {
         </label>`;
     });
     list.innerHTML = html;
-    updateSelectedCount();
-    document.getElementById('add-player-modal').classList.add('show');
+}
+
+// 搜索过滤玩家列表
+function filterAddPlayerList() {
+    const keyword = document.getElementById('add-player-search').value.trim().toLowerCase();
+    const addedIds = new Set(gamePlayers.map(gp => gp.player_id));
+    if (!keyword) {
+        renderAddPlayerList(allPlayers, addedIds);
+        return;
+    }
+    const filtered = allPlayers.filter(p => p.name.toLowerCase().includes(keyword));
+    renderAddPlayerList(filtered, addedIds);
 }
 
 // 全选/全不选
