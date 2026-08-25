@@ -74,6 +74,8 @@ async function loadGame() {
     await loadInvariantPlayers();
     // 加载当前游戏阶段
     await loadCurrentPhase();
+    // 加载系统推导事实
+    await loadInferenceFacts();
 }
 
 // 填充下拉选择框
@@ -405,6 +407,8 @@ async function addBehavior() {
             gameData = gameResult.data;
             renderBehaviors(gameData.behaviors || []);
         }
+        // 重新加载系统推导事实
+        await loadInferenceFacts();
     }
 }
 
@@ -1332,6 +1336,73 @@ async function loadCurrentPhase() {
         currentGamePhase = phase;  // 保存到全局变量
         document.getElementById('current-phase-display').textContent =
             '第' + phase.round + '轮 ' + phase.display;
+    }
+}
+
+// 加载系统推导事实
+async function loadInferenceFacts() {
+    const result = await api('GET', '/games/' + gameId + '/logic_inference');
+    const banner = document.getElementById('inference-facts-banner');
+    const content = document.getElementById('inference-facts-content');
+    
+    if (!banner || !content) {
+        return;
+    }
+    
+    if (!result || !result.data) {
+        banner.style.display = 'none';
+        return;
+    }
+    
+    const data = result.data;
+    const confirmed = data.confirmed_identities || [];
+    const updatedBehaviors = data.updated_behaviors || [];
+    
+    if (confirmed.length === 0 && updatedBehaviors.length === 0) {
+        banner.style.display = 'none';
+        return;
+    }
+    
+    let html = '';
+    
+    // 已确认身份
+    if (confirmed.length > 0) {
+        html += '<div style="margin-bottom:10px;">';
+        html += '<div style="font-size:12px;color:#22c55e;margin-bottom:6px;font-weight:600;">✅ 已确认身份（' + confirmed.length + '）</div>';
+        confirmed.forEach(c => {
+            const roleText = c.role_name || c.camp || '未知';
+            const reasonText = c.reason ? '（' + escapeHtml(c.reason) + '）' : '';
+            html += '<div style="font-size:12px;color:#cbd5e1;padding:3px 0;">• ' + escapeHtml(c.player_name) + ' → <strong style="color:#22c55e;">' + escapeHtml(roleText) + '</strong>' + reasonText + '</div>';
+        });
+        html += '</div>';
+    }
+    
+    // 自动修正的行为
+    if (updatedBehaviors.length > 0) {
+        html += '<div style="margin-bottom:10px;">';
+        html += '<div style="font-size:12px;color:#22c55e;margin-bottom:6px;font-weight:600;">🔄 行为自动修正（' + updatedBehaviors.length + '）</div>';
+        updatedBehaviors.forEach(b => {
+            const statusText = b.result_status === 'correct' ? '✅ 正确' : '❌ 错误';
+            const statusColor = b.result_status === 'correct' ? '#22c55e' : '#ef4444';
+            const targetText = b.target_name ? ' → ' + escapeHtml(b.target_name) : '';
+            html += '<div style="font-size:12px;color:#cbd5e1;padding:3px 0;">• ' + escapeHtml(b.actor_name) + ' ' + escapeHtml(b.action_name) + targetText + ' → <strong style="color:' + statusColor + ';">' + statusText + '</strong></div>';
+        });
+        html += '</div>';
+    }
+    
+    content.innerHTML = html;
+    banner.style.display = 'block';
+}
+
+// 手动触发逻辑推理
+async function runLogicInference() {
+    showToast('正在运行逻辑推理...', 'info');
+    const result = await api('POST', '/games/' + gameId + '/logic_inference/run');
+    if (result) {
+        const facts = result.data?.results?.derived_facts || [];
+        showToast('逻辑推理完成，推导了' + facts.length + '条事实', 'success');
+        await loadInferenceFacts();
+        await loadPredictions();
     }
 }
 

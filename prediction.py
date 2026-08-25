@@ -1288,6 +1288,40 @@ def predict_game(game_id, scenario_id=None):
                     # 子行为或一级行为：使用自己的独立权重
                     w = weight_map.get((action_id, rid), default_w)
                 log_probs[rid] += math.log(max(w, 0.0001))
+                
+                # 改进：行为结果状态修正
+                # 根据行为记录的result_status（correct/wrong）调整似然度
+                result_status = b.get("result_status", "unconfirmed")
+                if result_status != "unconfirmed":
+                    action_name = action_names.get(action_id, "")
+                    is_defend = "保" in action_name  # 保人类行为
+                    is_attack = "踩" in action_name  # 踩人类行为
+                    is_side = "站边" in action_name  # 站边行为
+                    is_vote = "票" in action_name  # 投票行为
+                    
+                    # 确定修正强度
+                    if is_defend or is_attack:
+                        correct_factor = 1.5  # 保对/踩对：好人证据
+                        wrong_factor = 1.5    # 保错/踩错：狼人证据
+                    elif is_side or is_vote:
+                        correct_factor = 1.3  # 站对/投对：好人证据
+                        wrong_factor = 1.3    # 站错/投错：狼人证据
+                    else:
+                        correct_factor = 1.2
+                        wrong_factor = 1.2
+                    
+                    if result_status == "correct":
+                        # 行为正确：增加好人阵营的似然度
+                        if role_camps.get(rid) == "好人":
+                            log_probs[rid] += math.log(correct_factor)
+                        else:
+                            log_probs[rid] += math.log(1.0 / correct_factor)
+                    elif result_status == "wrong":
+                        # 行为错误：增加狼人阵营的似然度
+                        if role_camps.get(rid) == "狼人":
+                            log_probs[rid] += math.log(wrong_factor)
+                        else:
+                            log_probs[rid] += math.log(1.0 / wrong_factor)
 
                 # 改进#第四阶段：个性化似然度修正
                 # 根据该玩家历史对局中拿不同身份时的行为倾向，调整似然度

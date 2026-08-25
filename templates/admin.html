@@ -89,6 +89,55 @@
             <label>描述</label>
             <textarea class="form-control" id="action-desc" placeholder="可选"></textarea>
         </div>
+        <!-- 语义属性（高级选项） -->
+        <div style="margin-bottom:12px;">
+            <div onclick="document.getElementById('action-semantic-fields').style.display=document.getElementById('action-semantic-fields').style.display==='none'?'block':'none'" style="cursor:pointer;color:#00f0ff;font-size:13px;padding:8px;background:rgba(0,240,255,0.05);border-radius:6px;border:1px solid rgba(0,240,255,0.2);">
+                🧠 语义属性配置（用于逻辑推理，点击展开/收起）
+            </div>
+            <div id="action-semantic-fields" style="display:none;margin-top:12px;padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;">
+                <div class="form-group">
+                    <label>行为类型</label>
+                    <select class="form-control" id="action-type">
+                        <option value="other">其他（普通行为）</option>
+                        <option value="identity_confirm">身份确认（100%确定身份，如自爆、开枪）</option>
+                        <option value="identity_claim">身份声明（声称自己是某身份，如跳预言家）</option>
+                        <option value="identity_conflict">身份冲突（两人对跳，至少一个狼）</option>
+                        <option value="check_result">查验结果（金水/查杀，条件性确定）</option>
+                        <option value="stance_expression">立场表达（保人/踩人/站边，有结果状态）</option>
+                        <option value="vote_action">投票行为（投票，有结果状态）</option>
+                        <option value="event">事件（死亡/平安夜等）</option>
+                    </select>
+                    <small style="color:#94a3b8;">系统会根据行为名称自动识别，可手动调整</small>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>确定性</label>
+                        <select class="form-control" id="action-certainty">
+                            <option value="probabilistic">概率性（只是参考）</option>
+                            <option value="absolute">100%确定</option>
+                            <option value="conditional">条件性（满足条件才确定）</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>有结果状态</label>
+                        <select class="form-control" id="action-has-result">
+                            <option value="false">否</option>
+                            <option value="true">是（保对/保错/踩对/踩错等）</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>确定内容</label>
+                    <input type="text" class="form-control" id="action-determine" placeholder="例如：actor_werewolf（发起者=狼人）、target_good（目标=好人）、at_least_one_werewolf（两人中至少一个狼）">
+                    <small style="color:#94a3b8;">该行为能确定什么内容（可选）</small>
+                </div>
+                <div class="form-group">
+                    <label>触发条件</label>
+                    <input type="text" class="form-control" id="action-trigger" placeholder="例如：if_actor_is_prophet（如果发起者是真预言家）">
+                    <small style="color:#94a3b8;">满足什么条件才生效（可选，用于条件性确定）</small>
+                </div>
+            </div>
+        </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="hideModal('action-modal')">取消</button>
             <button class="btn btn-primary" onclick="saveAction()">保存</button>

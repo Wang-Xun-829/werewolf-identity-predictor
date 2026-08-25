@@ -3,7 +3,7 @@
 根据已确认的事实，自动推导出其他事实，并更新行为记录的状态
 """
 
-from db import query_one, query_all, execute_write
+from db import query_one, query_all, execute_write, ph
 
 
 # ============================================================
@@ -24,7 +24,7 @@ def run_logic_inference(game_id, confirmed_identity_id=None):
     
     # 获取所有已确认的身份
     confirmed = query_all(
-        "SELECT * FROM game_confirmed_identities WHERE game_id = %s",
+        f"SELECT * FROM game_confirmed_identities WHERE game_id = {ph()}",
         (game_id,)
     )
     
@@ -73,11 +73,11 @@ def apply_self_explode_rule(game_id, confirmed, results):
         return results
     
     action_ids = [a['id'] for a in explode_actions]
-    placeholders = ','.join(['%s'] * len(action_ids))
+    placeholders = ','.join([ph()] * len(action_ids))
     
     # 获取有自爆行为的玩家
     explode_records = query_all(
-        f"SELECT DISTINCT actor_id FROM behavior_records WHERE game_id = %s AND action_id IN ({placeholders})",
+        f"SELECT DISTINCT actor_id FROM behavior_records WHERE game_id = {ph()} AND action_id IN ({placeholders})",
         (game_id, *action_ids)
     )
     
@@ -91,9 +91,9 @@ def apply_self_explode_rule(game_id, confirmed, results):
         if not already_confirmed:
             # 自动确认该玩家是狼人
             execute_write(
-                """INSERT INTO game_confirmed_identities 
+                f"""INSERT INTO game_confirmed_identities 
                    (game_id, player_id, role_id, camp, confidence, reason, source)
-                   VALUES (%s, %s, 7, '狼人', 1.0, '自爆行为自动确认', 'system')""",
+                   VALUES ({ph()}, {ph()}, 7, '狼人', 1.0, '自爆行为自动确认', 'system')""",
                 (game_id, player_id)
             )
             results['confirmed_identities'].append({
@@ -139,7 +139,7 @@ def apply_check_chain_rule(game_id, confirmed, results):
             
             # 获取该预言家的查验记录
             check_records = query_all(
-                "SELECT * FROM behavior_records WHERE game_id = %s AND actor_id = %s AND action_id = %s AND target_id IS NOT NULL",
+                f"SELECT * FROM behavior_records WHERE game_id = {ph()} AND actor_id = {ph()} AND action_id = {ph()} AND target_id IS NOT NULL",
                 (game_id, prophet_id, action_id)
             )
             
@@ -164,9 +164,9 @@ def apply_check_chain_rule(game_id, confirmed, results):
                 )
                 if not already_confirmed:
                     execute_write(
-                        """INSERT INTO game_confirmed_identities 
+                        f"""INSERT INTO game_confirmed_identities 
                            (game_id, player_id, role_id, camp, confidence, reason, source)
-                           VALUES (%s, %s, %s, %s, 1.0, %s, 'system')""",
+                           VALUES ({ph()}, {ph()}, {ph()}, {ph()}, 1.0, {ph()}, 'system')""",
                         (game_id, target_id, role_id, camp, f'预言家{prophet_id}的{role_name}')
                     )
                     results['confirmed_identities'].append({
@@ -206,7 +206,7 @@ def apply_counter_claim_rule(game_id, confirmed, results):
         
         # 获取对跳记录
         counter_records = query_all(
-            "SELECT * FROM behavior_records WHERE game_id = %s AND action_id = %s AND target_id IS NOT NULL",
+            f"SELECT * FROM behavior_records WHERE game_id = {ph()} AND action_id = {ph()} AND target_id IS NOT NULL",
             (game_id, action_id)
         )
         
@@ -263,7 +263,7 @@ def apply_stance_correction_rule(game_id, confirmed, results):
         
         # 获取该行为的所有记录（有目标的）
         records = query_all(
-            "SELECT * FROM behavior_records WHERE game_id = %s AND action_id = %s AND target_id IS NOT NULL AND result_status = 'unconfirmed'",
+            f"SELECT * FROM behavior_records WHERE game_id = {ph()} AND action_id = {ph()} AND target_id IS NOT NULL AND result_status = 'unconfirmed'",
             (game_id, action_id)
         )
         
@@ -297,7 +297,7 @@ def apply_stance_correction_rule(game_id, confirmed, results):
                 
                 # 更新行为记录状态
                 execute_write(
-                    "UPDATE behavior_records SET result_status = %s WHERE id = %s",
+                    f"UPDATE behavior_records SET result_status = {ph()} WHERE id = {ph()}",
                     (new_status, record_id)
                 )
                 results['updated_behaviors'].append({
@@ -334,8 +334,8 @@ def apply_side_correction_rule(game_id, confirmed, results):
         
         # 获取站边记录（有目标的，且目标是跳预言家的）
         records = query_all(
-            """SELECT br.* FROM behavior_records br
-               WHERE br.game_id = %s AND br.action_id = %s AND br.target_id IS NOT NULL AND br.result_status = 'unconfirmed'""",
+            f"""SELECT br.* FROM behavior_records br
+               WHERE br.game_id = {ph()} AND br.action_id = {ph()} AND br.target_id IS NOT NULL AND br.result_status = 'unconfirmed'""",
             (game_id, action_id)
         )
         
@@ -361,7 +361,7 @@ def apply_side_correction_rule(game_id, confirmed, results):
                 
                 # 更新行为记录状态
                 execute_write(
-                    "UPDATE behavior_records SET result_status = %s WHERE id = %s",
+                    f"UPDATE behavior_records SET result_status = {ph()} WHERE id = {ph()}",
                     (new_status, record_id)
                 )
                 results['updated_behaviors'].append({
@@ -400,7 +400,7 @@ def apply_vote_correction_rule(game_id, confirmed, results):
         
         # 获取投票记录
         records = query_all(
-            "SELECT * FROM behavior_records WHERE game_id = %s AND action_id = %s AND target_id IS NOT NULL AND result_status = 'unconfirmed'",
+            f"SELECT * FROM behavior_records WHERE game_id = {ph()} AND action_id = {ph()} AND target_id IS NOT NULL AND result_status = 'unconfirmed'",
             (game_id, action_id)
         )
         
@@ -445,7 +445,7 @@ def apply_vote_correction_rule(game_id, confirmed, results):
                 
                 # 更新行为记录状态
                 execute_write(
-                    "UPDATE behavior_records SET result_status = %s WHERE id = %s",
+                    f"UPDATE behavior_records SET result_status = {ph()} WHERE id = {ph()}",
                     (new_status, record_id)
                 )
                 results['updated_behaviors'].append({
@@ -468,23 +468,23 @@ def get_inference_summary(game_id):
     """
     # 获取所有已确认的身份
     confirmed = query_all(
-        """SELECT gi.*, p.name as player_name, r.name as role_name
+        f"""SELECT gi.*, p.name as player_name, r.name as role_name
            FROM game_confirmed_identities gi
            JOIN players p ON gi.player_id = p.id
            LEFT JOIN roles r ON gi.role_id = r.id
-           WHERE gi.game_id = %s
-           ORDER BY gi.created_at""",
+           WHERE gi.game_id = {ph()}
+           ORDER BY gi.confirmed_at""",
         (game_id,)
     )
     
     # 获取所有已更新的行为记录（非unconfirmed状态）
     updated_behaviors = query_all(
-        """SELECT br.*, p1.name as actor_name, p2.name as target_name, a.name as action_name
+        f"""SELECT br.*, p1.name as actor_name, p2.name as target_name, a.name as action_name
            FROM behavior_records br
            JOIN players p1 ON br.actor_id = p1.id
            LEFT JOIN players p2 ON br.target_id = p2.id
            JOIN actions a ON br.action_id = a.id
-           WHERE br.game_id = %s AND br.result_status != 'unconfirmed'
+           WHERE br.game_id = {ph()} AND br.result_status != 'unconfirmed'
            ORDER BY br.created_at""",
         (game_id,)
     )
@@ -505,10 +505,10 @@ def apply_behavior_sequence_rules(game_id, confirmed, results):
     """
     # 获取所有行为记录，按玩家分组，按时间排序
     all_behaviors = query_all(
-        """SELECT br.*, a.name as action_name, a.action_type, a.determine_content
+        f"""SELECT br.*, a.name as action_name, a.action_type, a.determine_content
            FROM behavior_records br
            JOIN actions a ON br.action_id = a.id
-           WHERE br.game_id = %s
+           WHERE br.game_id = {ph()}
            ORDER BY br.actor_id, br.created_at, br.id""",
         (game_id,)
     )

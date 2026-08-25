@@ -201,6 +201,13 @@ function showActionModal() {
     document.getElementById('action-name').value = '';
     document.getElementById('action-weight').value = '1.0';
     document.getElementById('action-desc').value = '';
+    // 重置语义属性
+    document.getElementById('action-type').value = 'other';
+    document.getElementById('action-certainty').value = 'probabilistic';
+    document.getElementById('action-has-result').value = 'false';
+    document.getElementById('action-determine').value = '';
+    document.getElementById('action-trigger').value = '';
+    document.getElementById('action-semantic-fields').style.display = 'none';
     populateParentSelect(null);
     document.getElementById('action-modal').classList.add('show');
 }
@@ -211,6 +218,12 @@ function editAction(a) {
     document.getElementById('action-name').value = a.name;
     document.getElementById('action-weight').value = a.default_weight;
     document.getElementById('action-desc').value = a.description || '';
+    // 填充语义属性
+    document.getElementById('action-type').value = a.action_type || 'other';
+    document.getElementById('action-certainty').value = a.certainty || 'probabilistic';
+    document.getElementById('action-has-result').value = a.has_result_status ? 'true' : 'false';
+    document.getElementById('action-determine').value = a.determine_content || '';
+    document.getElementById('action-trigger').value = a.trigger_condition || '';
     populateParentSelect(a.id);
     document.getElementById('action-parent').value = a.parent_id || '';
     document.getElementById('action-modal').classList.add('show');
@@ -223,7 +236,13 @@ async function saveAction() {
         name: document.getElementById('action-name').value.trim(),
         default_weight: parseFloat(document.getElementById('action-weight').value) || 1.0,
         description: document.getElementById('action-desc').value.trim(),
-        parent_id: parentId ? parseInt(parentId) : null
+        parent_id: parentId ? parseInt(parentId) : null,
+        // 语义属性
+        action_type: document.getElementById('action-type').value,
+        certainty: document.getElementById('action-certainty').value,
+        has_result_status: document.getElementById('action-has-result').value === 'true',
+        determine_content: document.getElementById('action-determine').value.trim() || null,
+        trigger_condition: document.getElementById('action-trigger').value.trim() || null
     };
     if (!data.name) { showToast('请输入行为名称', 'error'); return; }
     const result = id

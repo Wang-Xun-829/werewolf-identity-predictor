@@ -220,7 +220,7 @@ def list_actions():
 
 @api.route('/actions', methods=['POST'])
 def create_action():
-    """新增行为（支持指定父行为，实现分级）"""
+    """新增行为（支持指定父行为，实现分级，支持语义属性）"""
     import sys
     print("[DEBUG] create_action 被调用", flush=True)
     data = request.get_json() or {}
@@ -229,15 +229,68 @@ def create_action():
     description = data.get('description', '')
     default_weight = data.get('default_weight', 1.0)
     parent_id = data.get('parent_id')
+    
+    # 语义属性（如果用户没有提供，则根据名称智能识别）
+    action_type = data.get('action_type')
+    certainty = data.get('certainty')
+    determine_content = data.get('determine_content')
+    trigger_condition = data.get('trigger_condition')
+    has_result_status = data.get('has_result_status')
+    
+    # 智能识别语义属性
+    if not action_type or action_type == 'other':
+        if '自爆' in name:
+            action_type = 'identity_confirm'
+            certainty = 'absolute'
+            determine_content = 'actor_werewolf'
+        elif '开枪' in name:
+            action_type = 'identity_confirm'
+            certainty = 'absolute'
+            determine_content = 'actor_hunter_or_wolf_king'
+        elif '对跳' in name:
+            action_type = 'identity_conflict'
+            certainty = 'probabilistic'
+            determine_content = 'at_least_one_werewolf'
+        elif name.startswith('跳'):
+            action_type = 'identity_claim'
+            certainty = 'probabilistic'
+        elif '金水' in name or '查杀' in name:
+            action_type = 'check_result'
+            certainty = 'conditional'
+            trigger_condition = 'if_actor_is_prophet'
+            determine_content = 'target_good' if '金水' in name else 'target_werewolf'
+        elif '保' in name or '踩' in name or '站边' in name or '晃边' in name or '反水' in name:
+            action_type = 'stance_expression'
+            certainty = 'probabilistic'
+            has_result_status = True
+        elif '票' in name:
+            action_type = 'vote_action'
+            certainty = 'probabilistic'
+            has_result_status = True
+        elif '死' in name or '平安夜' in name:
+            action_type = 'event'
+            certainty = 'absolute'
+        else:
+            action_type = 'other'
+            certainty = 'probabilistic'
+    
+    if not certainty:
+        certainty = 'probabilistic'
+    if has_result_status is None:
+        has_result_status = ('对' in name or '错' in name or '保' in name or '踩' in name or '站边' in name or '票' in name)
+    
     if not name:
         return fail("行为名称不能为空")
     if parent_id:
         parent_id = int(parent_id)
-    print(f"[DEBUG] 准备插入: name={name}, parent_id={parent_id}", flush=True)
+    print(f"[DEBUG] 准备插入: name={name}, parent_id={parent_id}, action_type={action_type}", flush=True)
     try:
         new_id = execute_write(
-            f"INSERT INTO actions (name, description, default_weight, parent_id) VALUES ({ph()}, {ph()}, {ph()}, {ph()})",
-            (name, description, default_weight, parent_id)
+            f"""INSERT INTO actions (name, description, default_weight, parent_id, 
+                action_type, certainty, determine_content, trigger_condition, has_result_status) 
+                VALUES ({ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()})""",
+            (name, description, default_weight, parent_id, 
+             action_type, certainty, determine_content, trigger_condition, has_result_status)
         )
         print(f"[DEBUG] 插入成功, new_id={new_id}", flush=True)
         action = query_one("SELECT * FROM actions WHERE id = " + ph(), (new_id,))
@@ -251,7 +304,7 @@ def create_action():
 
 @api.route('/actions/<int:action_id>', methods=['PUT'])
 def update_action(action_id):
-    """修改行为（支持修改父行为）"""
+    """修改行为（支持修改父行为和语义属性）"""
     data = request.get_json() or {}
     action = query_one("SELECT * FROM actions WHERE id = " + ph(), (action_id,))
     if not action:
@@ -261,11 +314,23 @@ def update_action(action_id):
     default_weight = data.get('default_weight', action['default_weight'])
     is_active = data.get('is_active', action['is_active'])
     parent_id = data.get('parent_id', action.get('parent_id'))
+    
+    # 语义属性
+    action_type = data.get('action_type', action.get('action_type', 'other'))
+    certainty = data.get('certainty', action.get('certainty', 'probabilistic'))
+    determine_content = data.get('determine_content', action.get('determine_content'))
+    trigger_condition = data.get('trigger_condition', action.get('trigger_condition'))
+    has_result_status = data.get('has_result_status', action.get('has_result_status', False))
+    
     if parent_id:
         parent_id = int(parent_id)
     execute_write(
-        f"UPDATE actions SET name={ph()}, description={ph()}, default_weight={ph()}, is_active={ph()}, parent_id={ph()} WHERE id={ph()}",
-        (name, description, default_weight, is_active, parent_id, action_id)
+        f"""UPDATE actions SET name={ph()}, description={ph()}, default_weight={ph()}, 
+            is_active={ph()}, parent_id={ph()}, action_type={ph()}, certainty={ph()}, 
+            determine_content={ph()}, trigger_condition={ph()}, has_result_status={ph()} 
+            WHERE id={ph()}""",
+        (name, description, default_weight, is_active, parent_id, 
+         action_type, certainty, determine_content, trigger_condition, has_result_status, action_id)
     )
     action = query_one("SELECT * FROM actions WHERE id = " + ph(), (action_id,))
     return ok(action, "行为更新成功")
