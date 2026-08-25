@@ -1700,7 +1700,44 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 
     /* 网格 - 手机端保持对局详情页左右分栏 */
     .grid-2, .grid-3 { grid-template-columns: 1fr; }
-    .grid-sidebar { grid-template-columns: 120px 1fr; gap: 8px; }
+    .grid-sidebar { grid-template-columns: 130px 1fr; gap: 8px; }
+
+    /* 可搜索下拉框 - 手机端字体减小，控制到一行 */
+    .searchable-select-display {
+        font-size: 11px !important;
+        padding: 6px 8px !important;
+        min-height: 28px !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .searchable-select-dropdown input {
+        font-size: 11px !important;
+        padding: 6px 8px !important;
+    }
+    .searchable-select-option {
+        font-size: 11px !important;
+        padding: 6px 8px !important;
+    }
+
+    /* 左侧玩家列表标题和按钮不折行 */
+    .card-title {
+        flex-wrap: nowrap !important;
+        gap: 4px !important;
+    }
+    .card-title span {
+        font-size: 12px !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .card-title .btn {
+        flex-shrink: 0;
+        font-size: 10px !important;
+        padding: 4px 6px !important;
+        min-height: 24px !important;
+        white-space: nowrap;
+    }
 
     /* 表单 */
     .form-row { flex-direction: row; gap: 8px; }
