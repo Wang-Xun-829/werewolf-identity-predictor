@@ -1290,7 +1290,18 @@ def set_confirmed_identity(game_id):
         except Exception as e:
             print(f"回溯推断失败: {e}")
 
-    return ok(message="确认身份设置成功，已触发回溯推断")
+    # 触发逻辑推理引擎
+    try:
+        from logic_engine import run_logic_inference
+        inference_results = run_logic_inference(game_id)
+    except Exception as e:
+        print(f"逻辑推理失败: {e}")
+        inference_results = None
+
+    return ok({
+        'message': '确认身份设置成功，已触发回溯推断和逻辑推理',
+        'inference_results': inference_results
+    })
 
 
 @api.route('/confirmed_identities/<int:identity_id>', methods=['DELETE'])
@@ -1299,8 +1310,58 @@ def delete_confirmed_identity(identity_id):
     identity = query_one("SELECT * FROM game_confirmed_identities WHERE id = " + ph(), (identity_id,))
     if not identity:
         return fail("确认身份不存在", 404)
+    game_id = identity['game_id']
     execute_write(f"DELETE FROM game_confirmed_identities WHERE id = {ph()}", (identity_id,))
-    return ok(message="确认身份已删除")
+    
+    # 删除后重新运行逻辑推理（重置行为状态）
+    try:
+        # 先重置所有行为记录的状态
+        execute_write(
+            f"UPDATE behavior_records SET result_status = 'unconfirmed' WHERE game_id = {ph()}",
+            (game_id,)
+        )
+        from logic_engine import run_logic_inference
+        run_logic_inference(game_id)
+    except Exception as e:
+        print(f"重新推理失败: {e}")
+    
+    return ok(message="确认身份已删除，已重新推理")
+
+
+# ============================================================
+# 逻辑推理引擎 API
+# ============================================================
+@api.route('/games/<int:game_id>/logic_inference', methods=['GET'])
+def get_logic_inference(game_id):
+    """获取对局的逻辑推理结果"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    
+    from logic_engine import get_inference_summary
+    summary = get_inference_summary(game_id)
+    return ok(summary)
+
+
+@api.route('/games/<int:game_id>/logic_inference/run', methods=['POST'])
+def run_logic_inference_api(game_id):
+    """手动触发逻辑推理"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+    
+    # 先重置所有行为记录的状态
+    execute_write(
+        f"UPDATE behavior_records SET result_status = 'unconfirmed' WHERE game_id = {ph()}",
+        (game_id,)
+    )
+    
+    from logic_engine import run_logic_inference
+    results = run_logic_inference(game_id)
+    return ok({
+        'message': '逻辑推理完成',
+        'results': results
+    })
 
 
 # ============================================================
