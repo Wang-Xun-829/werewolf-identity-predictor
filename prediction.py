@@ -1192,6 +1192,10 @@ def predict_game(game_id, scenario_id=None):
         if actor not in behaviors_by_actor:
             behaviors_by_actor[actor] = []
         behaviors_by_actor[actor].append(b)
+    
+    # 获取所有行为名称（用于行为结果状态修正）
+    all_actions = query_all("SELECT id, name FROM actions")
+    action_names = {a["id"]: a["name"] for a in all_actions}
 
     # 改进#第四阶段：构建个性化行为统计（基于所有已确认对局）
     personalized_stats, global_stats, player_game_counts = build_personalized_stats()
