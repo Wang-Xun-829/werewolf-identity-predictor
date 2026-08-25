@@ -1991,8 +1991,10 @@ function renderExplanation(data) {
         html += '<div style="font-weight:600;font-size:16px;margin-bottom:10px;color:#f59e0b;">📊 个性化行为统计</div>';
         html += '<div style="padding:12px;background:rgba(245,158,11,0.05);border-radius:8px;border:1px solid rgba(245,158,11,0.2);font-size:13px;">';
         html += '<p>系统已根据该玩家的历史对局数据，学习了其个人行为倾向。同样的行为，对不同玩家可能有不同的身份指示意义。</p>';
-        const total_samples = data.personalized_stats.reduce((sum, s) => sum + (s.sample_count || 0), 0);
-        html += `<p style="margin-top:8px;"><strong>历史数据量：</strong>${total_samples} 条</p>`;
+        // 使用count字段（数据库中的字段名），而不是sample_count
+        const total_samples = data.personalized_stats.reduce((sum, s) => sum + (s.count || 0), 0);
+        const total_games = data.personalized_stats.reduce((sum, s) => sum + (s.game_count || 0), 0);
+        html += `<p style="margin-top:8px;"><strong>历史数据量：</strong>${total_samples} 条行为记录，涉及 ${total_games} 局对局</p>`;
         html += '</div></div>';
     }
 
