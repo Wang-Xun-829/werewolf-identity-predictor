@@ -1790,9 +1790,8 @@ function renderLogicAnalysis(data) {
     const contradictions = data.contradictions || [];
     const information_leaks = data.information_leaks || [];
     const logic_chains = data.logic_chains || [];
-    const summary_data = data.summary || {};
-
-    const total = summary_data.total_issues || 0;
+    const player_suspicion = data.player_suspicion || {};
+    const total = data.total_issues || 0;
 
     banner.style.display = 'block';
     if (total === 0) {
@@ -1801,7 +1800,10 @@ function renderLogicAnalysis(data) {
         return;
     }
 
-    summary.textContent = `共发现 ${total} 个问题（高风险 ${summary_data.high_severity || 0} 个）`;
+    const highSeverity = contradictions.filter(c => c.severity === 'high').length +
+                         information_leaks.filter(l => l.severity === 'high').length +
+                         logic_chains.filter(c => c.severity === 'high').length;
+    summary.textContent = `共发现 ${total} 个问题（高风险 ${highSeverity} 个）`;
 
     let html = '';
 
@@ -1841,9 +1843,22 @@ function renderLogicAnalysis(data) {
             const severityColor = c.severity === 'high' ? '#ef4444' : '#f59e0b';
             html += '<div style="padding:8px;background:rgba(6,182,212,0.08);border-radius:6px;margin-bottom:6px;border-left:3px solid ' + severityColor + ';">';
             html += '<div style="font-size:13px;">' + escapeHtml(c.description) + '</div>';
-            if (c.suspect_name) {
-                html += '<div style="font-size:12px;color:#f59e0b;margin-top:4px;">⚠️ 重点怀疑：' + escapeHtml(c.suspect_name) + '</div>';
-            }
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    // 玩家嫌疑分数
+    const suspicionEntries = Object.entries(player_suspicion).filter(([pid, score]) => score > 0);
+    if (suspicionEntries.length > 0) {
+        html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.1);">';
+        html += '<div style="font-weight:600;color:#f59e0b;margin-bottom:6px;">🎯 玩家嫌疑分数（影响预测概率）</div>';
+        suspicionEntries.sort((a, b) => b[1] - a[1]).forEach(([pid, score]) => {
+            const player = predictions.find(x => x.player_id === parseInt(pid));
+            const playerName = player ? player.player_name : `玩家${pid}`;
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;">';
+            html += '<span style="font-size:13px;">' + escapeHtml(playerName) + '</span>';
+            html += '<span style="font-size:13px;color:#f59e0b;font-weight:600;">' + score + ' 分</span>';
             html += '</div>';
         });
         html += '</div>';

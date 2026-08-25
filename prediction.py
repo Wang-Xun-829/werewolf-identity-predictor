@@ -1564,6 +1564,54 @@ def predict_game(game_id, scenario_id=None):
         import traceback
         traceback.print_exc()
 
+    # 第二阶段高级推理：逻辑一致性与视角分析
+    # 根据逻辑分析结果（矛盾、信息量溢出、逻辑链条）调整玩家身份概率
+    try:
+        from logic_analysis import analyze_game_logic
+        logic_result = analyze_game_logic(game_id)
+        player_suspicion = logic_result.get('player_suspicion', {})
+        
+        # 保存逻辑分析结果到结果中（用于前端展示）
+        results['_logic_analysis_result'] = logic_result
+        
+        # 根据嫌疑分数调整玩家概率
+        for player_id, suspicion_score in player_suspicion.items():
+            if player_id not in results:
+                continue
+            # 跳过已确认身份的玩家
+            if results[player_id].get('is_confirmed'):
+                continue
+            
+            probs = results[player_id]['probabilities']
+            
+            # 嫌疑分数越高，狼人概率越大
+            # 每1分嫌疑分数，狼人概率增加10%（相对调整）
+            if suspicion_score > 0:
+                werewolf_factor = 1.0 + (suspicion_score * 0.1)
+                for rid in probs:
+                    if role_camps.get(rid) == '狼人':
+                        probs[rid] = probs[rid] * werewolf_factor
+                    else:
+                        probs[rid] = probs[rid] / werewolf_factor
+                
+                # 重新归一化
+                total = sum(probs.values())
+                if total > 0:
+                    for rid in probs:
+                        probs[rid] = round(probs[rid] / total, 6)
+                
+                # 重新找出最高概率身份
+                top_role_id = max(probs, key=probs.get)
+                results[player_id]['top_role_id'] = top_role_id
+                results[player_id]['top_role_name'] = role_names.get(top_role_id, "")
+                results[player_id]['top_probability'] = round(probs[top_role_id], 6)
+                results[player_id]['probabilities'] = probs
+                results[player_id]['suspicion_score'] = suspicion_score
+    except Exception as e:
+        print(f"逻辑分析集成失败: {e}")
+        import traceback
+        traceback.print_exc()
+
     # 8. 保存预测结果到数据库（仅当无scenario_id时，情景预测不覆盖真实预测）
     if not scenario_id:
         save_predictions(game_id, results)
