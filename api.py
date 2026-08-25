@@ -633,8 +633,8 @@ def confirm_game(game_id):
     updated_count = update_weights_from_game(game_id)
     # 更新个性化行为统计（每个玩家在不同身份下的行为倾向）
     try:
-        from prediction import update_personalized_stats_after_game
-        personalized_updated = update_personalized_stats_after_game(game_id)
+        from prediction import update_personalized_stats
+        personalized_updated = update_personalized_stats(game_id)
     except Exception as e:
         print(f"更新个性化行为统计失败: {e}")
         personalized_updated = 0
