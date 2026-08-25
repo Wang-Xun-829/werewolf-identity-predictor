@@ -64,9 +64,10 @@ def apply_self_explode_rule(game_id, confirmed, results):
         "SELECT id FROM actions WHERE action_type = 'identity_confirm' AND determine_content = 'actor_werewolf'"
     )
     if not explode_actions:
-        # 尝试按名称查找
+        # 尝试按名称查找（使用参数化查询避免中文编码问题）
         explode_actions = query_all(
-            "SELECT id FROM actions WHERE name LIKE '%自爆%'"
+            "SELECT id FROM actions WHERE name LIKE " + ph(),
+            ('%自爆%',)
         )
     
     if not explode_actions:
@@ -129,9 +130,20 @@ def apply_check_chain_rule(game_id, confirmed, results):
             "SELECT id, determine_content FROM actions WHERE action_type = 'check_result'"
         )
         if not check_actions:
-            check_actions = query_all(
-                "SELECT id, CASE WHEN name LIKE '%金水%' THEN 'target_good' ELSE 'target_werewolf' END as determine_content FROM actions WHERE name LIKE '%金水%' OR name LIKE '%查杀%'"
+            # 使用参数化查询避免中文编码问题，分别查询金水和查杀
+            gold_water_actions = query_all(
+                "SELECT id FROM actions WHERE name LIKE " + ph(),
+                ('%金水%',)
             )
+            kill_check_actions = query_all(
+                "SELECT id FROM actions WHERE name LIKE " + ph(),
+                ('%查杀%',)
+            )
+            check_actions = []
+            for a in gold_water_actions:
+                check_actions.append({'id': a['id'], 'determine_content': 'target_good'})
+            for a in kill_check_actions:
+                check_actions.append({'id': a['id'], 'determine_content': 'target_werewolf'})
         
         for action in check_actions:
             action_id = action['id']
@@ -196,8 +208,10 @@ def apply_counter_claim_rule(game_id, confirmed, results):
         "SELECT id, name FROM actions WHERE action_type = 'identity_conflict'"
     )
     if not counter_actions:
+        # 使用参数化查询避免中文编码问题
         counter_actions = query_all(
-            "SELECT id, name FROM actions WHERE name LIKE '%对跳%'"
+            "SELECT id, name FROM actions WHERE name LIKE " + ph(),
+            ('%对跳%',)
         )
     
     for action in counter_actions:
@@ -243,11 +257,17 @@ def apply_stance_correction_rule(game_id, confirmed, results):
         "SELECT id, name, determine_content FROM actions WHERE action_type = 'stance_expression' AND has_result_status = TRUE"
     )
     if not stance_actions:
-        stance_actions = query_all(
-            """SELECT id, name, 
-               CASE WHEN name LIKE '%保%' THEN 'defend' ELSE 'attack' END as determine_content
-               FROM actions WHERE (name LIKE '%保%' OR name LIKE '%踩%') AND parent_id IS NOT NULL"""
+        # 使用参数化查询避免中文编码问题，在Python中过滤
+        all_actions = query_all(
+            "SELECT id, name FROM actions WHERE parent_id IS NOT NULL"
         )
+        stance_actions = []
+        for a in all_actions:
+            name = a['name']
+            if '保' in name:
+                stance_actions.append({'id': a['id'], 'name': name, 'determine_content': 'defend'})
+            elif '踩' in name:
+                stance_actions.append({'id': a['id'], 'name': name, 'determine_content': 'attack'})
     
     for action in stance_actions:
         action_id = action['id']
@@ -319,13 +339,16 @@ def apply_side_correction_rule(game_id, confirmed, results):
     如果A站边B（预言家），B被确认为真预言家 → A站对边
     如果A站边B（预言家），B被确认为狼人 → A站错边
     """
-    # 获取所有站边行为
+    # 获取所有站边行为（使用参数化查询避免中文编码问题）
     side_actions = query_all(
-        "SELECT id, name FROM actions WHERE name LIKE '%站边%' AND has_result_status = TRUE"
+        "SELECT id, name FROM actions WHERE name LIKE " + ph() + " AND has_result_status = TRUE",
+        ('%站边%',)
     )
     if not side_actions:
+        # 使用参数化查询避免中文编码问题
         side_actions = query_all(
-            "SELECT id, name FROM actions WHERE name LIKE '%站边%'"
+            "SELECT id, name FROM actions WHERE name LIKE " + ph(),
+            ('%站边%',)
         )
     
     for action in side_actions:
@@ -390,8 +413,10 @@ def apply_vote_correction_rule(game_id, confirmed, results):
         "SELECT id, name FROM actions WHERE action_type = 'vote_action' AND has_result_status = TRUE"
     )
     if not vote_actions:
+        # 使用参数化查询避免中文编码问题
         vote_actions = query_all(
-            "SELECT id, name FROM actions WHERE name LIKE '%票%' AND parent_id IS NOT NULL"
+            "SELECT id, name FROM actions WHERE name LIKE " + ph() + " AND parent_id IS NOT NULL",
+            ('%票%',)
         )
     
     for action in vote_actions:
