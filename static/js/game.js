@@ -558,22 +558,104 @@ async function finishGame() {
 }
 
 // 显示确认对局模态框
-function showConfirmModal() {
+async function showConfirmModal() {
     const container = document.getElementById('confirm-roles-list');
+    
+    // 获取当前版型的可用身份列表（含总数量）
+    const result = await api('GET', `/games/${gameId}/available_roles`);
+    let roleOptions = [];
+    if (result && result.data && result.data.length > 0) {
+        roleOptions = result.data;
+    } else {
+        // 降级：使用所有身份
+        roleOptions = allRoles.map(r => ({
+            id: r.id,
+            name: r.name,
+            camp: r.camp,
+            total_count: 99,
+            available_count: 99,
+            available: true
+        }));
+    }
+    
+    // 跟踪每个身份已选择的数量
+    let selectedCounts = {};
+    roleOptions.forEach(r => {
+        selectedCounts[r.id] = 0;
+    });
+    
+    // 预填已设置的真实身份
+    gamePlayers.forEach(gp => {
+        if (gp.actual_role_id && selectedCounts[gp.actual_role_id] !== undefined) {
+            selectedCounts[gp.actual_role_id]++;
+        }
+    });
+    
+    // 生成HTML
     let html = '';
     gamePlayers.forEach(gp => {
         const seat = gp.seat_number ? `${gp.seat_number}号 ` : '';
         html += `<div class="form-group">
             <label>${seat}${escapeHtml(gp.player_name)} 的真实身份</label>
-            <select class="form-control" id="confirm-role-${gp.player_id}">
+            <select class="form-control confirm-role-select" data-player-id="${gp.player_id}" id="confirm-role-${gp.player_id}">
                 <option value="">请选择身份</option>`;
-        allRoles.forEach(r => {
+        
+        roleOptions.forEach(r => {
             const selected = gp.actual_role_id === r.id ? 'selected' : '';
-            html += `<option value="${r.id}" ${selected}>${escapeHtml(r.name)} (${r.camp})</option>`;
+            const remaining = r.total_count - selectedCounts[r.id];
+            const isDisabled = remaining <= 0 && !selected;
+            const disabledAttr = isDisabled ? 'disabled' : '';
+            const displayText = `${escapeHtml(r.name)} (${r.camp}) - 剩余${remaining}个${isDisabled ? ' (已满)' : ''}`;
+            html += `<option value="${r.id}" ${selected} ${disabledAttr}>${displayText}</option>`;
         });
+        
         html += `</select></div>`;
     });
     container.innerHTML = html;
+    
+    // 为每个下拉框添加change事件，动态更新可用身份
+    document.querySelectorAll('.confirm-role-select').forEach(select => {
+        select.addEventListener('change', function() {
+            const playerId = parseInt(this.dataset.playerId);
+            const newRoleId = this.value ? parseInt(this.value) : null;
+            const player = gamePlayers.find(gp => gp.player_id === playerId);
+            const oldRoleId = player ? player.actual_role_id : null;
+            
+            // 更新已选择数量
+            if (oldRoleId && selectedCounts[oldRoleId] !== undefined) {
+                selectedCounts[oldRoleId]--;
+            }
+            if (newRoleId && selectedCounts[newRoleId] !== undefined) {
+                selectedCounts[newRoleId]++;
+            }
+            
+            // 更新player的actual_role_id
+            if (player) {
+                player.actual_role_id = newRoleId;
+            }
+            
+            // 更新所有下拉框的选项
+            document.querySelectorAll('.confirm-role-select').forEach(otherSelect => {
+                const otherPlayerId = parseInt(otherSelect.dataset.playerId);
+                const otherSelectedValue = otherSelect.value;
+                const otherPlayer = gamePlayers.find(gp => gp.player_id === otherPlayerId);
+                
+                // 保留当前选中的值，重建选项
+                let optionsHtml = '<option value="">请选择身份</option>';
+                roleOptions.forEach(r => {
+                    const isCurrentSelected = otherSelectedValue == r.id;
+                    const remaining = r.total_count - selectedCounts[r.id];
+                    const isDisabled = remaining <= 0 && !isCurrentSelected;
+                    const disabledAttr = isDisabled ? 'disabled' : '';
+                    const selectedAttr = isCurrentSelected ? 'selected' : '';
+                    const displayText = `${escapeHtml(r.name)} (${r.camp}) - 剩余${remaining}个${isDisabled ? ' (已满)' : ''}`;
+                    optionsHtml += `<option value="${r.id}" ${selectedAttr} ${disabledAttr}>${displayText}</option>`;
+                });
+                otherSelect.innerHTML = optionsHtml;
+            });
+        });
+    });
+    
     document.getElementById('confirm-modal').classList.add('show');
 }
 
