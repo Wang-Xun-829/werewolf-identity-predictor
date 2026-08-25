@@ -236,18 +236,20 @@ def generate_teaching_suggestions(behaviors, personalized_stats):
 
     # 个性化统计建议
     if personalized_stats:
-        total_samples = sum(s.get('sample_count', 0) for s in personalized_stats)
+        # 使用count字段（数据库中的字段名），而不是sample_count
+        total_samples = sum(s.get('count', 0) for s in personalized_stats)
+        total_games = sum(s.get('game_count', 0) for s in personalized_stats)
         if total_samples >= 10:
             suggestions.append({
                 'type': 'success',
                 'title': '个性化数据充足',
-                'content': f'该玩家已有{total_samples}条历史数据，系统可以根据该玩家的个人行为倾向进行更准确的预测。建议继续积累数据，预测会越来越准确。'
+                'content': f'该玩家已有{total_samples}条历史行为记录，涉及{total_games}局对局，系统可以根据该玩家的个人行为倾向进行更准确的预测。建议继续积累数据，预测会越来越准确。'
             })
         else:
             suggestions.append({
                 'type': 'info',
                 'title': '个性化数据积累中',
-                'content': f'该玩家目前只有{total_samples}条历史数据，个性化预测还不够准确。建议在更多对局中观察该玩家，积累数据后预测会更准确。'
+                'content': f'该玩家目前只有{total_samples}条历史行为记录，涉及{total_games}局对局，个性化预测还不够准确。建议在更多对局中观察该玩家，积累数据后预测会更准确。'
             })
 
     # 通用学习建议
