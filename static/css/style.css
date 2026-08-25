@@ -1700,18 +1700,22 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 
     /* 网格 - 手机端保持对局详情页左右分栏 */
     .grid-2, .grid-3 { grid-template-columns: 1fr; }
-    .grid-sidebar { grid-template-columns: 180px 1fr; gap: 12px; }
+    .grid-sidebar { grid-template-columns: 120px 1fr; gap: 8px; }
 
     /* 表单 */
-    .form-row { flex-direction: column; gap: 0; }
+    .form-row { flex-direction: row; gap: 8px; }
+    .form-row .form-group { flex: 1; min-width: 0; }
+    .form-group { margin-bottom: 10px; }
+    .form-group label { font-size: 11px; margin-bottom: 4px; }
+    .form-control { padding: 8px 10px; font-size: 12px; min-height: 36px; }
 
     /* 卡片 */
-    .card { padding: 16px; border-radius: 14px; }
-    .card-title { font-size: 14px; margin-bottom: 16px; padding-bottom: 12px; }
+    .card { padding: 12px; border-radius: 12px; margin-bottom: 10px; }
+    .card-title { font-size: 13px; margin-bottom: 10px; padding-bottom: 8px; }
 
     /* 按钮 */
-    .btn { padding: 12px 18px; font-size: 13px; min-height: 44px; }
-    .btn-sm { padding: 8px 14px; font-size: 12px; min-height: 36px; }
+    .btn { padding: 8px 14px; font-size: 12px; min-height: 36px; }
+    .btn-sm { padding: 6px 10px; font-size: 11px; min-height: 30px; }
 
     /* 表格 - 手机端改为卡片式 */
     .table { font-size: 12px; }
@@ -1745,14 +1749,15 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 
     /* 玩家书签 - 手机端保持纵向，紧凑显示 */
     .player-bookmarks {
-        gap: 6px;
+        gap: 4px;
     }
 
     .player-bookmark {
-        padding: 10px 10px;
+        padding: 6px 6px;
         flex-direction: column;
         align-items: flex-start;
-        gap: 4px;
+        gap: 2px;
+        border-radius: 8px;
     }
 
     .player-bookmark:hover {
@@ -1760,14 +1765,20 @@ textarea.form-control { resize: vertical; min-height: 80px; }
     }
 
     .bookmark-name {
-        font-size: 12px;
+        font-size: 11px;
         word-break: break-all;
-        line-height: 1.3;
+        line-height: 1.2;
     }
 
     .bookmark-role {
         margin-left: 0;
+        font-size: 9px;
+        padding: 1px 4px;
+    }
+
+    .bookmark-remove {
         font-size: 10px;
+        padding: 1px 4px;
     }
 
     /* 概率条 */
@@ -1787,7 +1798,146 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 
     /* 手机端行为录入表单增加底部间距，避免被浮动按钮遮挡 */
     #behavior-form-card {
-        margin-bottom: 80px;
+        margin-bottom: 60px;
+    }
+
+    /* 游戏流程控制 - 手机端紧凑显示 */
+    #game-flow-control {
+        padding: 8px;
+        margin-bottom: 10px;
+    }
+    #game-flow-control > div {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+    }
+    #current-phase-display {
+        font-size: 13px;
+        text-align: center;
+    }
+    #game-flow-control .btn {
+        flex: 1;
+        font-size: 11px;
+        padding: 6px 8px;
+        min-height: 32px;
+    }
+
+    /* 行为选择区域 - 手机端紧凑显示 */
+    .action-tag-grid {
+        gap: 4px;
+        max-height: 150px;
+    }
+    .action-tag {
+        padding: 4px 6px;
+        font-size: 10px;
+        border-radius: 6px;
+    }
+    .selected-actions-info {
+        font-size: 11px;
+        padding: 6px;
+    }
+    .selected-action-tag {
+        font-size: 10px;
+        padding: 2px 6px;
+    }
+
+    /* 预测结果覆盖层 - 手机端优化 */
+    .prediction-overlay {
+        top: 56px;
+    }
+    .prediction-overlay .card {
+        margin-bottom: 8px;
+    }
+    .prediction-overlay .card-title {
+        font-size: 12px;
+        margin-bottom: 8px;
+        padding-bottom: 6px;
+    }
+    .prob-list {
+        gap: 4px;
+    }
+    .prob-item {
+        margin-bottom: 4px;
+    }
+    .prob-item-label {
+        font-size: 10px;
+    }
+    .prob-bar {
+        height: 16px;
+    }
+    .prob-bar-fill {
+        font-size: 9px;
+        padding-right: 4px;
+    }
+
+    /* 行为记录时间线 - 手机端紧凑显示 */
+    .timeline-round {
+        margin-bottom: 12px;
+    }
+    .timeline-round-title {
+        font-size: 11px;
+        margin-bottom: 6px;
+    }
+    .timeline-content {
+        padding: 6px 8px;
+        margin-left: 16px;
+    }
+    .timeline-header {
+        font-size: 10px;
+        margin-bottom: 2px;
+    }
+    .timeline-body {
+        font-size: 11px;
+    }
+    .timeline-dot {
+        width: 8px;
+        height: 8px;
+        left: 4px;
+    }
+    .badge {
+        font-size: 9px;
+        padding: 1px 4px;
+    }
+
+    /* 模态框 - 手机端优化 */
+    .modal {
+        padding: 16px;
+        border-radius: 12px;
+        max-height: 85vh;
+        max-width: 95vw;
+    }
+    .modal-title {
+        font-size: 14px;
+        margin-bottom: 12px;
+    }
+    .modal-footer {
+        gap: 8px;
+        margin-top: 12px;
+    }
+    .modal-footer .btn {
+        flex: 1;
+    }
+
+    /* 情景标签 - 手机端紧凑显示 */
+    .scenario-tabs {
+        gap: 4px;
+        margin-bottom: 8px;
+    }
+    .scenario-tab {
+        padding: 4px 8px;
+        font-size: 10px;
+    }
+
+    /* 逻辑分析/预言家推导区域 - 手机端紧凑显示 */
+    #prophet-inference-banner,
+    #logic-analysis-banner {
+        padding: 8px;
+        margin-bottom: 8px;
+    }
+    #prophet-inference-banner > div:first-child,
+    #logic-analysis-banner > div:first-child {
+        font-size: 12px;
+        margin-bottom: 6px;
     }
 }
 
