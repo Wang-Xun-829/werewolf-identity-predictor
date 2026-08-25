@@ -1557,3 +1557,90 @@ def get_player_features(game_id, player_id):
         'features': features,
         'feature_names': get_all_features()
     })
+
+
+# ============================================================
+# 15. 重新学习历史对局的个性化行为统计
+# ============================================================
+@api.route('/admin/backfill_personalized_stats', methods=['GET'])
+def backfill_personalized_stats():
+    """重新学习所有已确认对局的个性化行为统计
+    
+    遍历所有状态为"已确认"的对局，对每个对局调用update_personalized_stats，
+    把之前的历史对局数据也学习到player_behavior_stats表中。
+    
+    使用方法：在浏览器中访问 /admin/backfill_personalized_stats（POST请求）
+    或者在终端运行：curl -X POST https://your-domain.com/admin/backfill_personalized_stats
+    """
+    try:
+        print("[重新学习] 开始处理所有已确认对局")
+        
+        # 1. 查询所有状态为"已确认"的对局（只查询id，确保跨环境兼容）
+        confirmed_games = query_all(
+            "SELECT id FROM games WHERE status = " + ph() + " ORDER BY id",
+            ('已确认',)
+        )
+        
+        if not confirmed_games:
+            return ok({
+                'message': '没有找到已确认的对局',
+                'total_games': 0,
+                'success_count': 0,
+                'fail_count': 0,
+                'total_updated': 0
+            })
+        
+        print(f"[重新学习] 找到 {len(confirmed_games)} 个已确认的对局")
+        
+        # 2. 清空现有的个性化行为统计（避免重复计算）
+        execute_write("DELETE FROM player_behavior_stats")
+        print("[重新学习] 已清空 player_behavior_stats 表")
+        
+        # 3. 对每个对局调用update_personalized_stats
+        from prediction import update_personalized_stats
+        total_updated = 0
+        success_count = 0
+        fail_count = 0
+        game_results = []
+        
+        for game in confirmed_games:
+            game_id = game['id']
+            try:
+                updated_count = update_personalized_stats(game_id)
+                if updated_count > 0:
+                    print(f"[重新学习] 对局 {game_id}: 成功更新 {updated_count} 个玩家的统计")
+                    total_updated += updated_count
+                    success_count += 1
+                    game_results.append({'game_id': game_id, 'status': 'success', 'updated_count': updated_count})
+                else:
+                    print(f"[重新学习] 对局 {game_id}: 没有玩家有真实身份或行为记录（跳过）")
+                    success_count += 1
+                    game_results.append({'game_id': game_id, 'status': 'skipped', 'updated_count': 0})
+            except Exception as e:
+                print(f"[重新学习] 对局 {game_id}: 失败 - {e}")
+                fail_count += 1
+                game_results.append({'game_id': game_id, 'status': 'failed', 'error': str(e)})
+        
+        # 4. 查询当前的统计数据量
+        stats_count = query_all("SELECT COUNT(*) as cnt FROM player_behavior_stats")
+        player_stats = query_all("SELECT COUNT(DISTINCT player_id) as cnt FROM player_behavior_stats")
+        
+        result = {
+            'message': '重新学习完成！',
+            'total_games': len(confirmed_games),
+            'success_count': success_count,
+            'fail_count': fail_count,
+            'total_updated': total_updated,
+            'stats_records': stats_count[0]['cnt'] if stats_count else 0,
+            'players_with_stats': player_stats[0]['cnt'] if player_stats else 0,
+            'game_results': game_results
+        }
+        
+        print(f"[重新学习] 完成！成功 {success_count}, 失败 {fail_count}, 总更新 {total_updated}")
+        return ok(result)
+        
+    except Exception as e:
+        import traceback
+        print(f"[重新学习] 发生错误: {e}")
+        print(f"[重新学习] 错误堆栈: {traceback.format_exc()}")
+        return fail(f"重新学习失败: {str(e)}", 500)
