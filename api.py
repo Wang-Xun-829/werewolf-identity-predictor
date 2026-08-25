@@ -631,6 +631,13 @@ def confirm_game(game_id):
     score_result = score_predictions(game_id)
     # 算法自我优化：更新权重
     updated_count = update_weights_from_game(game_id)
+    # 更新个性化行为统计（每个玩家在不同身份下的行为倾向）
+    try:
+        from prediction import update_personalized_stats_after_game
+        personalized_updated = update_personalized_stats_after_game(game_id)
+    except Exception as e:
+        print(f"更新个性化行为统计失败: {e}")
+        personalized_updated = 0
     # 确认所有行为记录
     execute_write(
         f"UPDATE behavior_records SET is_verified=TRUE WHERE game_id={ph()}",
@@ -643,8 +650,9 @@ def confirm_game(game_id):
     )
     return ok({
         "score": score_result,
-        "weights_updated": updated_count
-    }, "对局结果已确认，预测已打分，算法权重已更新")
+        "weights_updated": updated_count,
+        "personalized_stats_updated": personalized_updated
+    }, "对局结果已确认，预测已打分，算法权重已更新，个性化行为统计已更新")
 
 
 # ============================================================
