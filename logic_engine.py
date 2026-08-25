@@ -46,6 +46,9 @@ def run_logic_inference(game_id, confirmed_identity_id=None):
     # 规则6：投票自动修正
     results = apply_vote_correction_rule(game_id, confirmed, results)
     
+    # 规则7-12：行为序列推理
+    results = apply_behavior_sequence_rules(game_id, confirmed, results)
+    
     return results
 
 
@@ -490,3 +493,248 @@ def get_inference_summary(game_id):
         'confirmed_identities': confirmed,
         'updated_behaviors': updated_behaviors
     }
+
+
+# ============================================================
+# 规则7-12：行为序列推理（按时间顺序分析行为模式）
+# ============================================================
+def apply_behavior_sequence_rules(game_id, confirmed, results):
+    """
+    行为序列推理：按时间顺序分析每个玩家的行为模式
+    这些规则不是100%确认，而是调整概率权重
+    """
+    # 获取所有行为记录，按玩家分组，按时间排序
+    all_behaviors = query_all(
+        """SELECT br.*, a.name as action_name, a.action_type, a.determine_content
+           FROM behavior_records br
+           JOIN actions a ON br.action_id = a.id
+           WHERE br.game_id = %s
+           ORDER BY br.actor_id, br.created_at, br.id""",
+        (game_id,)
+    )
+    
+    # 按玩家分组
+    behaviors_by_player = {}
+    for b in all_behaviors:
+        actor = b['actor_id']
+        if actor not in behaviors_by_player:
+            behaviors_by_player[actor] = []
+        behaviors_by_player[actor].append(b)
+    
+    for player_id, behaviors in behaviors_by_player.items():
+        # 规则7：身份声明变更（跳身份A → 跳身份B，B≠A）
+        results = detect_identity_change(player_id, behaviors, results)
+        
+        # 规则8：跳预言家 → 退水
+        results = detect_prophet_retreat(player_id, behaviors, results)
+        
+        # 规则9：跳身份 → 脱衣服
+        results = detect_undress(player_id, behaviors, results)
+        
+        # 规则10：保人 → 后来踩同一个人（立场摇摆）
+        results = detect_stance_swing(player_id, behaviors, results)
+        
+        # 规则11：站边A → 后来站边B（晃边）
+        results = detect_side_switch(player_id, behaviors, results)
+        
+        # 规则12：投票A → 后来投票B（变票）
+        results = detect_vote_change(player_id, behaviors, results)
+    
+    return results
+
+
+def detect_identity_change(player_id, behaviors, results):
+    """
+    规则7：身份声明变更
+    如果玩家先跳身份A，后来又跳身份B（B≠A）→ 大概率不是A
+    """
+    identity_claims = []
+    for b in behaviors:
+        if b['action_type'] == 'identity_claim':
+            # 从行为名称中提取身份
+            action_name = b['action_name']
+            identity = None
+            if '预言家' in action_name:
+                identity = '预言家'
+            elif '女巫' in action_name:
+                identity = '女巫'
+            elif '猎人' in action_name:
+                identity = '猎人'
+            elif '守卫' in action_name:
+                identity = '守卫'
+            elif '平民' in action_name or '拍平民' in action_name:
+                identity = '平民'
+            elif '骑士' in action_name:
+                identity = '骑士'
+            elif '混子' in action_name:
+                identity = '混子'
+            
+            if identity:
+                identity_claims.append({
+                    'identity': identity,
+                    'time': b['created_at'],
+                    'action_name': action_name
+                })
+    
+    # 检测身份变更
+    if len(identity_claims) >= 2:
+        first_identity = identity_claims[0]['identity']
+        for claim in identity_claims[1:]:
+            if claim['identity'] != first_identity:
+                results['derived_facts'].append(
+                    f'玩家{player_id}先跳{first_identity}，后跳{claim["identity"]} → 大概率不是{first_identity}'
+                )
+                break
+    
+    return results
+
+
+def detect_prophet_retreat(player_id, behaviors, results):
+    """
+    规则8：跳预言家 → 退水
+    如果玩家跳预言家，然后退水 → 大概率不是预言家（除了滴滴代跳）
+    """
+    jumped_prophet = False
+    retreated = False
+    
+    for b in behaviors:
+        action_name = b['action_name']
+        if '跳预言家' in action_name or (b['action_type'] == 'identity_claim' and '预言家' in action_name):
+            jumped_prophet = True
+        elif '退水' in action_name:
+            if jumped_prophet:
+                retreated = True
+                break
+    
+    if jumped_prophet and retreated:
+        results['derived_facts'].append(
+            f'玩家{player_id}跳预言家后退水 → 大概率不是预言家（除滴滴代跳等特殊情况）'
+        )
+    
+    return results
+
+
+def detect_undress(player_id, behaviors, results):
+    """
+    规则9：跳身份 → 脱衣服
+    如果玩家跳身份A，然后脱衣服 → 大概率不是A
+    """
+    identity_claimed = None
+    undressed = False
+    
+    for b in behaviors:
+        action_name = b['action_name']
+        if b['action_type'] == 'identity_claim' and '脱' not in action_name:
+            if '预言家' in action_name:
+                identity_claimed = '预言家'
+            elif '女巫' in action_name:
+                identity_claimed = '女巫'
+            elif '猎人' in action_name:
+                identity_claimed = '猎人'
+            elif '守卫' in action_name:
+                identity_claimed = '守卫'
+        elif '脱衣服' in action_name or '脱预言家' in action_name:
+            if identity_claimed:
+                undressed = True
+                break
+    
+    if identity_claimed and undressed:
+        results['derived_facts'].append(
+            f'玩家{player_id}跳{identity_claimed}后脱衣服 → 大概率不是{identity_claimed}'
+        )
+    
+    return results
+
+
+def detect_stance_swing(player_id, behaviors, results):
+    """
+    规则10：保人 → 后来踩同一个人（立场摇摆）
+    """
+    # 记录对每个目标的立场变化
+    stance_history = {}  # target_id -> [('保', time), ('踩', time), ...]
+    
+    for b in behaviors:
+        action_name = b['action_name']
+        target_id = b['target_id']
+        if not target_id:
+            continue
+        
+        if '保' in action_name and b['action_type'] == 'stance_expression':
+            if target_id not in stance_history:
+                stance_history[target_id] = []
+            stance_history[target_id].append(('保', b['created_at']))
+        elif '踩' in action_name and b['action_type'] == 'stance_expression':
+            if target_id not in stance_history:
+                stance_history[target_id] = []
+            stance_history[target_id].append(('踩', b['created_at']))
+    
+    # 检测立场摇摆（先保后踩，或先踩后保）
+    for target_id, history in stance_history.items():
+        if len(history) >= 2:
+            first_stance = history[0][0]
+            for stance in history[1:]:
+                if stance[0] != first_stance:
+                    results['derived_facts'].append(
+                        f'玩家{player_id}对玩家{target_id}先{first_stance}后{stance[0]} → 立场摇摆，嫌疑增加'
+                    )
+                    break
+    
+    return results
+
+
+def detect_side_switch(player_id, behaviors, results):
+    """
+    规则11：站边A → 后来站边B（晃边）
+    """
+    side_history = []  # [target_id, ...]
+    
+    for b in behaviors:
+        action_name = b['action_name']
+        target_id = b['target_id']
+        if not target_id:
+            continue
+        if '站边' in action_name and b['action_type'] == 'stance_expression':
+            side_history.append(target_id)
+    
+    # 检测晃边
+    if len(side_history) >= 2:
+        first_side = side_history[0]
+        for side in side_history[1:]:
+            if side != first_side:
+                results['derived_facts'].append(
+                    f'玩家{player_id}先站边玩家{first_side}，后站边玩家{side} → 晃边'
+                )
+                break
+    
+    return results
+
+
+def detect_vote_change(player_id, behaviors, results):
+    """
+    规则12：投票A → 后来投票B（变票）
+    """
+    vote_history = []  # [(target_id, round_number), ...]
+    
+    for b in behaviors:
+        action_name = b['action_name']
+        target_id = b['target_id']
+        if not target_id:
+            continue
+        if '票' in action_name and b['action_type'] == 'vote_action':
+            vote_history.append((target_id, b.get('round_number')))
+    
+    # 检测变票（同一轮次投票给不同的人）
+    if len(vote_history) >= 2:
+        rounds = {}
+        for target_id, round_num in vote_history:
+            if round_num not in rounds:
+                rounds[round_num] = []
+            rounds[round_num].append(target_id)
+        
+        for round_num, targets in rounds.items():
+            if len(set(targets)) >= 2:
+                results['derived_facts'].append(
+                    f'玩家{player_id}在第{round_num}轮投票给不同玩家 → 变票'
+                )
+    
+    return results
