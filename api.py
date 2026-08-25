@@ -1411,22 +1411,35 @@ def get_logic_inference(game_id):
 @api.route('/games/<int:game_id>/logic_inference/run', methods=['POST'])
 def run_logic_inference_api(game_id):
     """手动触发逻辑推理"""
-    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
-    if not game:
-        return fail("对局不存在", 404)
-    
-    # 先重置所有行为记录的状态
-    execute_write(
-        f"UPDATE behavior_records SET result_status = 'unconfirmed' WHERE game_id = {ph()}",
-        (game_id,)
-    )
-    
-    from logic_engine import run_logic_inference
-    results = run_logic_inference(game_id)
-    return ok({
-        'message': '逻辑推理完成',
-        'results': results
-    })
+    try:
+        print(f"[逻辑推理] 开始处理对局 {game_id}")
+        game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+        if not game:
+            return fail("对局不存在", 404)
+        print(f"[逻辑推理] 对局存在: {game.get('name', '')}")
+        
+        # 先重置所有行为记录的状态
+        print(f"[逻辑推理] 开始重置行为记录状态")
+        execute_write(
+            f"UPDATE behavior_records SET result_status = 'unconfirmed' WHERE game_id = {ph()}",
+            (game_id,)
+        )
+        print(f"[逻辑推理] 行为记录状态重置完成")
+        
+        print(f"[逻辑推理] 开始运行逻辑推理引擎")
+        from logic_engine import run_logic_inference
+        results = run_logic_inference(game_id)
+        print(f"[逻辑推理] 逻辑推理完成，确认身份: {len(results.get('confirmed_identities', []))}, 更新行为: {len(results.get('updated_behaviors', []))}")
+        
+        return ok({
+            'message': '逻辑推理完成',
+            'results': results
+        })
+    except Exception as e:
+        import traceback
+        print(f"[逻辑推理] 发生错误: {e}")
+        print(f"[逻辑推理] 错误堆栈: {traceback.format_exc()}")
+        return fail(f"逻辑推理失败: {str(e)}", 500)
 
 
 # ============================================================
