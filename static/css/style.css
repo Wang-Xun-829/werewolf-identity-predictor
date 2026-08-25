@@ -1250,7 +1250,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
     color: white;
     font-size: 13px;
     font-weight: 600;
-    z-index: 1000;
+    z-index: 3000;
     opacity: 0;
     transform: translateX(120%);
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1287,7 +1287,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
     background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    z-index: 200;
+    z-index: 2000;
     align-items: center;
     justify-content: center;
     padding: 20px;
