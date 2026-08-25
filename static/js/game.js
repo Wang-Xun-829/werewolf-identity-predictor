@@ -18,6 +18,20 @@ let editingScenarioId = null;  // 当前在模态框中编辑的情景ID
 let currentGamePhase = null;  // {phase, round, display, time}
 
 // 通用模态框函数
+
+// 折叠/展开区域
+function toggleSection(contentId, toggleId) {
+    const content = document.getElementById(contentId);
+    const toggle = document.getElementById(toggleId);
+    if (!content) return;
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        if (toggle) toggle.textContent = '▲';
+    } else {
+        content.style.display = 'none';
+        if (toggle) toggle.textContent = '▼';
+    }
+}
 function hideModal(id) {
     document.getElementById(id).classList.remove('show');
 }
@@ -1392,6 +1406,16 @@ async function loadInferenceFacts() {
     
     content.innerHTML = html;
     banner.style.display = 'block';
+    // 显示数量
+    const countEl = document.getElementById('inference-facts-count');
+    if (countEl) {
+        const total = confirmed.length + updatedBehaviors.length;
+        countEl.textContent = `（共 ${total} 条）`;
+    }
+    // 保持内容折叠状态（默认折叠）
+    content.style.display = 'none';
+    const toggle = document.getElementById('inference-facts-toggle');
+    if (toggle) toggle.textContent = '▼';
 }
 
 // 手动触发逻辑推理
@@ -1865,6 +1889,10 @@ function renderLogicAnalysis(data) {
     }
 
     content.innerHTML = html;
+    // 保持内容折叠状态（默认折叠）
+    content.style.display = 'none';
+    const toggle = document.getElementById('logic-analysis-toggle');
+    if (toggle) toggle.textContent = '▼';
 }
 
 
