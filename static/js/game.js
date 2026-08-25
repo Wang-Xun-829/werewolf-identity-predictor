@@ -2058,6 +2058,8 @@ function renderMLStatus(status) {
     }
     html += '</div>';
 
+    // 模型说明和特征列表已隐藏（用户要求不显示）
+    /*
     // 模型说明
     html += '<div style="margin-bottom:20px;">';
     html += '<div style="font-weight:600;font-size:16px;margin-bottom:10px;color:#a855f7;">📚 模型说明</div>';
@@ -2091,6 +2093,7 @@ function renderMLStatus(status) {
     });
 
     html += '</div></div>';
+    */
 
     content.innerHTML = html;
 }

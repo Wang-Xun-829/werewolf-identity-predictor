@@ -52,22 +52,6 @@
                         <!-- 查验链 -->
                         <div id="prophet-chains" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid rgba(168,85,247,0.2);"></div>
                     </div>
-                    <!-- 逻辑一致性与视角分析 -->
-                    <div id="logic-analysis-banner" style="display:none;margin-bottom:12px;padding:12px;background:rgba(245,158,11,0.08);border-radius:8px;border:1px solid rgba(245,158,11,0.3);">
-                        <div style="font-weight:600;color:#f59e0b;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
-                            <span>🔍 逻辑一致性与视角分析</span>
-                            <span id="logic-analysis-summary" style="font-size:12px;color:#f59e0b;"></span>
-                        </div>
-                        <div id="logic-analysis-content"></div>
-                    </div>
-                    <!-- 系统推导事实 -->
-                    <div id="inference-facts-banner" style="display:none;margin-bottom:12px;padding:12px;background:rgba(34,197,94,0.08);border-radius:8px;border:1px solid rgba(34,197,94,0.3);">
-                        <div style="font-weight:600;color:#22c55e;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
-                            <span>🧠 系统推导事实</span>
-                            <button class="btn btn-sm" style="background:rgba(34,197,94,0.2);color:#22c55e;border:1px solid rgba(34,197,94,0.4);padding:4px 10px;font-size:11px;" onclick="runLogicInference()">🔄 重新推导</button>
-                        </div>
-                        <div id="inference-facts-content"></div>
-                    </div>
                     <div id="selected-player-prediction">
                         <div class="empty-state"><p>请从左侧选择玩家查看预测</p></div>
                     </div>
@@ -143,6 +127,24 @@
                 <input type="text" class="form-control" id="behavior-notes" placeholder="可选">
             </div>
             <button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="addBehavior()">➕ 录入行为并刷新预测</button>
+        </div>
+
+        <!-- 系统推导事实 -->
+        <div id="inference-facts-banner" style="display:none;margin-bottom:12px;padding:12px;background:rgba(34,197,94,0.08);border-radius:8px;border:1px solid rgba(34,197,94,0.3);">
+            <div style="font-weight:600;color:#22c55e;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+                <span>🧠 系统推导事实</span>
+                <button class="btn btn-sm" style="background:rgba(34,197,94,0.2);color:#22c55e;border:1px solid rgba(34,197,94,0.4);padding:4px 10px;font-size:11px;" onclick="runLogicInference()">🔄 重新推导</button>
+            </div>
+            <div id="inference-facts-content"></div>
+        </div>
+
+        <!-- 逻辑一致性与视角分析 -->
+        <div id="logic-analysis-banner" style="display:none;margin-bottom:12px;padding:12px;background:rgba(245,158,11,0.08);border-radius:8px;border:1px solid rgba(245,158,11,0.3);">
+            <div style="font-weight:600;color:#f59e0b;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+                <span>🔍 逻辑一致性与视角分析</span>
+                <span id="logic-analysis-summary" style="font-size:12px;color:#f59e0b;"></span>
+            </div>
+            <div id="logic-analysis-content"></div>
         </div>
 
         <div class="card">
