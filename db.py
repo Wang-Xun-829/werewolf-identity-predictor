@@ -24,8 +24,13 @@ else:
 def get_db():
     """获取数据库连接（自动适配 SQLite / PostgreSQL）"""
     if DB_TYPE == "postgresql":
-        conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
-        # 显式设置客户端编码为UTF-8，避免中文解码错误
+        # 禁用预编译语句，避免中文编码问题；显式设置客户端编码为UTF-8
+        conn = psycopg.connect(
+            DATABASE_URL,
+            row_factory=dict_row,
+            prepare_threshold=None,
+            autocommit=False
+        )
         try:
             conn.execute("SET client_encoding = 'UTF8'")
         except Exception:
