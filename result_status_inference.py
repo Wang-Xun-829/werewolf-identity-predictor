@@ -179,8 +179,8 @@ def auto_infer_result_status(game_id, confirmed_player_id, confirmed_camp=None, 
                     f"""SELECT 1 FROM behavior_records b
                         JOIN actions a ON b.action_id = a.id
                         WHERE b.game_id = {ph()} AND b.actor_id = {ph()}
-                        AND a.name LIKE '%预言家%' LIMIT 1""",
-                    (game_id, confirmed_player_id)
+                        AND a.name LIKE {ph()} LIMIT 1""",
+                    (game_id, confirmed_player_id, '%预言家%')
                 )
                 if has_prophet_claim:
                     new_status = 'incorrect'
@@ -211,9 +211,9 @@ def auto_infer_result_status(game_id, confirmed_player_id, confirmed_camp=None, 
                 FROM behavior_records b
                 JOIN actions a ON b.action_id = a.id
                 WHERE b.game_id = {ph()} AND b.target_id = {ph()}
-                AND (a.name LIKE '%站边%' OR a.name LIKE '%站%')
+                AND (a.name LIKE {ph()} OR a.name LIKE {ph()})
                 ORDER BY b.id""",
-            (game_id, confirmed_player_id)
+            (game_id, confirmed_player_id, '%站边%', '%站%')
         )
         for behavior in side_behaviors:
             current_status = behavior.get('result_status', 'unknown')
