@@ -724,6 +724,7 @@ def apply_role_uniqueness(predictions, role_camps, role_ids, game_id):
 
             top_role_id = max(probs, key=probs.get)
             predictions[player_id]['top_role_id'] = top_role_id
+            predictions[player_id]['top_camp'] = role_camps.get(top_role_id, "未知")
             predictions[player_id]['top_probability'] = round(probs[top_role_id], 6)
             predictions[player_id]['probabilities'] = probs
 

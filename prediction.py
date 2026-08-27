@@ -1272,6 +1272,30 @@ def predict_game(game_id, scenario_id=None):
 
         # 累积该玩家作为发起者的行为
         actor_behaviors = behaviors_by_actor.get(player_id, [])
+
+        # 特殊处理：如果玩家有自爆行为，100%确认为狼人
+        has_self_destruct = any(b["action_id"] == 69 for b in actor_behaviors)  # 69 = 自爆
+        if has_self_destruct:
+            for rid in role_ids:
+                if role_camps.get(rid) == "狼人":
+                    log_probs[rid] = math.log(1.0)  # 狼人概率100%
+                else:
+                    log_probs[rid] = math.log(0.0001)  # 其他身份概率接近0
+            # 保存基础对数概率，跳过后续行为处理
+            base_log_probs[player_id] = dict(log_probs)
+            max_log = max(log_probs.values())
+            base_probs = {}
+            total = 0.0
+            for rid in role_ids:
+                p = math.exp(log_probs[rid] - max_log)
+                base_probs[rid] = p
+                total += p
+            if total > 0:
+                for rid in role_ids:
+                    base_probs[rid] = round(base_probs[rid] / total, 6)
+            base_results[player_id] = {"probabilities": base_probs}
+            continue
+
         for b in actor_behaviors:
             action_id = b["action_id"]
             default_w = action_defaults.get(action_id, 1.0)
@@ -1349,11 +1373,11 @@ def predict_game(game_id, scenario_id=None):
                 declared_camp = role_camps[declared_role_id]
                 for rid in role_ids:
                     if rid == declared_role_id:
-                        log_probs[rid] += math.log(2.0)       # 声明的身份 ×2
+                        log_probs[rid] += math.log(5.0)       # 声明的身份 ×5（大幅增加）
                     elif role_camps.get(rid) == declared_camp:
-                        log_probs[rid] += math.log(1.2)       # 同阵营其他身份 ×1.2
+                        log_probs[rid] += math.log(1.5)       # 同阵营其他身份 ×1.5
                     else:
-                        log_probs[rid] += math.log(0.5)       # 对立阵营 ×0.5
+                        log_probs[rid] += math.log(0.3)       # 对立阵营 ×0.3
 
             # ---- 改进#2：利用"声明阵营"信息 ----
             declared_camp = b.get("actor_camp")
@@ -1486,6 +1510,7 @@ def predict_game(game_id, scenario_id=None):
             top_role_id = max(probs, key=probs.get)
             results[player_id]['top_role_id'] = top_role_id
             results[player_id]['top_role_name'] = role_names.get(top_role_id, "")
+            results[player_id]['top_camp'] = role_camps.get(top_role_id, "未知")
             results[player_id]['top_probability'] = round(probs[top_role_id], 6)
             results[player_id]['probabilities'] = probs
 
@@ -1534,6 +1559,7 @@ def predict_game(game_id, scenario_id=None):
             top_role_id = max(probs, key=probs.get)
             results[player_id]['top_role_id'] = top_role_id
             results[player_id]['top_role_name'] = role_names.get(top_role_id, "")
+            results[player_id]['top_camp'] = role_camps.get(top_role_id, "未知")
             results[player_id]['top_probability'] = round(probs[top_role_id], 6)
             results[player_id]['probabilities'] = probs
             # 标记为已确认
@@ -1611,6 +1637,7 @@ def predict_game(game_id, scenario_id=None):
                 top_role_id = max(probs, key=probs.get)
                 results[player_id]['top_role_id'] = top_role_id
                 results[player_id]['top_role_name'] = role_names.get(top_role_id, "")
+                results[player_id]['top_camp'] = role_camps.get(top_role_id, "未知")
                 results[player_id]['top_probability'] = round(probs[top_role_id], 6)
                 results[player_id]['probabilities'] = probs
                 results[player_id]['suspicion_score'] = suspicion_score
@@ -1618,6 +1645,19 @@ def predict_game(game_id, scenario_id=None):
         print(f"逻辑分析集成失败: {e}")
         import traceback
         traceback.print_exc()
+
+    # 统一重新计算所有玩家的top_role_name和top_camp，确保一致性
+    for player_id, data in results.items():
+        # 跳过非玩家ID的键（如'_prophet_inference_log'）
+        if isinstance(player_id, str) and player_id.startswith('_'):
+            continue
+        if 'probabilities' in data and data['probabilities']:
+            probs = data['probabilities']
+            top_role_id = max(probs, key=probs.get)
+            data['top_role_id'] = top_role_id
+            data['top_role_name'] = role_names.get(top_role_id, f'身份{top_role_id}')
+            data['top_camp'] = role_camps.get(top_role_id, "未知")
+            data['top_probability'] = round(probs[top_role_id], 6)
 
     # 8. 保存预测结果到数据库（仅当无scenario_id时，情景预测不覆盖真实预测）
     if not scenario_id:
@@ -1692,6 +1732,7 @@ def get_predictions(game_id):
             top = data["probabilities"][0]
             data["top_role_name"] = top["role_name"]
             data["top_probability"] = top["probability"]
+            data["top_camp"] = top.get("role_camp", "未知")
 
     return list(result.values())
 
