@@ -27,3 +27,39 @@ Thumbs.db
 # 日志
 *.log
 logs/
+
+# 大文件（PDF、视频等）
+*.pdf
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# 临时截图和测试图片
+error*.png
+temp*.png
+test*.png
+screenshot*.png
+deploy_error*.png
+
+# 临时Python脚本
+temp_*.py
+check_*.py
+test_*.py
+migrate_*.py
+backfill_*.py
+fix_*.py
+analyze_*.py
+read_*.py
+render_*.py
+check_pdf.py
+
+# 数据库文件（本地开发用）
+*.db
+*.sqlite
+*.sqlite3
+
+# 临时文件
+*.tmp
+*.bak
+*.old
