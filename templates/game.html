@@ -127,6 +127,19 @@
                 <input type="text" class="form-control" id="behavior-notes" placeholder="可选">
             </div>
             <button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="addBehavior()">➕ 录入行为并刷新预测</button>
+            
+            <!-- 快捷录入区域 -->
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);">
+                <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">⚡ 快捷录入</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-sm" style="background:rgba(59,130,246,0.2);color:#3b82f6;border:1px solid rgba(59,130,246,0.4);padding:6px 12px;font-size:12px;" onclick="showProphetJumpModal()">🔮 预言家起跳</button>
+                    <button class="btn btn-sm" style="background:rgba(168,85,247,0.2);color:#a855f7;border:1px solid rgba(168,85,247,0.4);padding:6px 12px;font-size:12px;" onclick="showVoteBatchModal()">🗳️ 投票统计</button>
+                    <button class="btn btn-sm" style="background:rgba(239,68,68,0.2);color:#ef4444;border:1px solid rgba(239,68,68,0.4);padding:6px 12px;font-size:12px;" onclick="showDeathInfoModal()">💀 公布死讯</button>
+                    <button class="btn btn-sm" style="background:rgba(16,185,129,0.2);color:#10b981;border:1px solid rgba(16,185,129,0.4);padding:6px 12px;font-size:12px;" onclick="showWitchPotionModal()">🧪 女巫用药</button>
+                    <button class="btn btn-sm" style="background:rgba(245,158,11,0.2);color:#f59e0b;border:1px solid rgba(245,158,11,0.4);padding:6px 12px;font-size:12px;" onclick="showHunterShootModal()">🔫 猎人开枪</button>
+                    <button class="btn btn-sm" style="background:rgba(139,92,246,0.2);color:#8b5cf6;border:1px solid rgba(139,92,246,0.4);padding:6px 12px;font-size:12px;" onclick="showGuardProtectModal()">🛡️ 守卫守护</button>
+                </div>
+            </div>
         </div>
 
         <!-- 系统推导事实（可折叠） -->
@@ -465,6 +478,235 @@
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="hideModal('phase-adjust-modal')">取消</button>
             <button class="btn btn-primary" onclick="confirmPhaseAdjust()">确认调整</button>
+        </div>
+    </div>
+</div>
+
+<!-- 预言家起跳快捷录入模态框 -->
+<div class="modal-overlay" id="prophet-jump-modal">
+    <div class="modal" style="max-width:550px;">
+        <div class="modal-title">🔮 预言家起跳快捷录入</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">
+            一次录入预言家起跳相关的多个行为，录入后每条行为都可以单独修改或删除。
+        </div>
+        <div class="form-group">
+            <label>预言家（行为发起者） <span class="required">*</span></label>
+            <select class="form-control" id="prophet-jump-actor"></select>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>查验类型 <span class="required">*</span></label>
+                <select class="form-control" id="prophet-jump-check-type">
+                    <option value="gold">金水</option>
+                    <option value="check">查杀</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>起跳位置 <span class="required">*</span></label>
+                <select class="form-control" id="prophet-jump-position">
+                    <option value="before">警前</option>
+                    <option value="after">警后</option>
+                    <option value="below">警下</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>查验目标 <span class="required">*</span></label>
+            <select class="form-control" id="prophet-jump-target"></select>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>第一警徽流</label>
+                <select class="form-control" id="prophet-jump-badge1">
+                    <option value="">不设置</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>第二警徽流</label>
+                <select class="form-control" id="prophet-jump-badge2">
+                    <option value="">不设置</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>备注</label>
+            <input type="text" class="form-control" id="prophet-jump-notes" placeholder="可选，例如：心路历程、发言亮点等">
+        </div>
+        <div style="background:rgba(59,130,246,0.1);padding:12px;border-radius:8px;margin-bottom:16px;font-size:12px;color:#93c5fd;">
+            <div style="font-weight:600;margin-bottom:6px;">📋 将创建以下行为记录：</div>
+            <div id="prophet-jump-preview">1. 跳预言家</div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('prophet-jump-modal')">取消</button>
+            <button class="btn btn-primary" onclick="submitProphetJump()">确认录入</button>
+        </div>
+    </div>
+</div>
+
+<!-- 投票统计快捷录入模态框 -->
+<div class="modal-overlay" id="vote-batch-modal">
+    <div class="modal" style="max-width:600px;max-height:80vh;overflow-y:auto;">
+        <div class="modal-title">🗳️ 投票统计快捷录入</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">
+            批量录入所有玩家的投票，录入后每条投票都可以单独修改或删除。
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>投票类型 <span class="required">*</span></label>
+                <select class="form-control" id="vote-batch-type" onchange="updateVoteBatchPreview()">
+                    <option value="sheriff">投警徽票</option>
+                    <option value="banish">投放逐票</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>&nbsp;</label>
+                <button class="btn btn-sm" style="width:100%;background:rgba(168,85,247,0.2);color:#a855f7;border:1px solid rgba(168,85,247,0.4);" onclick="clearAllVotes()">清空所有</button>
+            </div>
+        </div>
+        <div id="vote-batch-list" style="margin-bottom:16px;">
+            <!-- 动态生成投票列表 -->
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('vote-batch-modal')">取消</button>
+            <button class="btn btn-primary" onclick="submitVoteBatch()">确认录入</button>
+        </div>
+    </div>
+</div>
+
+<!-- 公布死讯快捷录入模态框 -->
+<div class="modal-overlay" id="death-info-modal">
+    <div class="modal" style="max-width:550px;">
+        <div class="modal-title">💀 公布死讯快捷录入</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">
+            录入昨夜死亡信息，录入后可以修改或删除。
+        </div>
+        <div class="form-group">
+            <label>死亡类型 <span class="required">*</span></label>
+            <select class="form-control" id="death-info-type" onchange="updateDeathInfoFields()">
+                <option value="safe">平安夜（无人死亡）</option>
+                <option value="single">单死</option>
+                <option value="double">双死</option>
+                <option value="triple">三死</option>
+            </select>
+        </div>
+        <div id="death-info-victims" style="display:none;">
+            <div class="form-group">
+                <label>死者1 <span class="required">*</span></label>
+                <select class="form-control" id="death-info-victim1"></select>
+            </div>
+            <div class="form-group" id="death-info-victim2-group" style="display:none;">
+                <label>死者2</label>
+                <select class="form-control" id="death-info-victim2"></select>
+            </div>
+            <div class="form-group" id="death-info-victim3-group" style="display:none;">
+                <label>死者3</label>
+                <select class="form-control" id="death-info-victim3"></select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>备注</label>
+            <input type="text" class="form-control" id="death-info-notes" placeholder="可选，例如：女巫撒毒、猎人开枪等">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('death-info-modal')">取消</button>
+            <button class="btn btn-primary" onclick="submitDeathInfo()">确认录入</button>
+        </div>
+    </div>
+</div>
+
+<!-- 女巫用药快捷录入模态框（可选，只有女巫需要录入） -->
+<div class="modal-overlay" id="witch-potion-modal">
+    <div class="modal" style="max-width:500px;">
+        <div class="modal-title">🧪 女巫用药快捷录入 <span style="font-size:12px;color:var(--text-secondary);font-weight:normal;">（可选，仅女巫知晓）</span></div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;padding:10px;background:rgba(59,130,246,0.1);border-radius:8px;border:1px solid rgba(59,130,246,0.3);">
+            💡 这是女巫的私有信息，只有女巫自己知道是否用药。如果你不是女巫，可以跳过不录入。
+        </div>
+        <div class="form-group">
+            <label>用药类型 <span class="required">*</span></label>
+            <select class="form-control" id="witch-potion-type" onchange="updateWitchPotionFields()">
+                <option value="antidote">使用解药（救人）</option>
+                <option value="poison">使用毒药（毒人）</option>
+                <option value="both">双药都用（先救后毒）</option>
+                <option value="none">未用药</option>
+            </select>
+        </div>
+        <div class="form-group" id="witch-antidote-group">
+            <label>解药救的玩家</label>
+            <select class="form-control" id="witch-antidote-target"></select>
+        </div>
+        <div class="form-group" id="witch-poison-group" style="display:none;">
+            <label>毒药毒的玩家</label>
+            <select class="form-control" id="witch-poison-target"></select>
+        </div>
+        <div class="form-group">
+            <label>备注</label>
+            <input type="text" class="form-control" id="witch-potion-notes" placeholder="可选">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('witch-potion-modal')">取消</button>
+            <button class="btn btn-primary" onclick="submitWitchPotion()">确认录入</button>
+        </div>
+    </div>
+</div>
+
+<!-- 猎人开枪快捷录入模态框（公开信息，所有人都能看到） -->
+<div class="modal-overlay" id="hunter-shoot-modal">
+    <div class="modal" style="max-width:500px;">
+        <div class="modal-title">🔫 猎人开枪快捷录入 <span style="font-size:12px;color:var(--text-secondary);font-weight:normal;">（公开信息）</span></div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;padding:10px;background:rgba(34,197,94,0.1);border-radius:8px;border:1px solid rgba(34,197,94,0.3);">
+            💡 猎人开枪是公开信息，所有玩家都能看到。如果猎人没有开枪（被毒杀或选择不开枪），可以选择"未开枪"。
+        </div>
+        <div class="form-group">
+            <label>开枪状态 <span class="required">*</span></label>
+            <select class="form-control" id="hunter-shoot-status" onchange="updateHunterShootFields()">
+                <option value="shoot">开枪了</option>
+                <option value="noshoot">未开枪（被毒或选择不开）</option>
+            </select>
+        </div>
+        <div class="form-group" id="hunter-shooter-group">
+            <label>猎人（开枪者） <span class="required">*</span></label>
+            <select class="form-control" id="hunter-shooter"></select>
+        </div>
+        <div class="form-group" id="hunter-target-group">
+            <label>开枪带走的玩家 <span class="required">*</span></label>
+            <select class="form-control" id="hunter-target"></select>
+        </div>
+        <div class="form-group">
+            <label>备注</label>
+            <input type="text" class="form-control" id="hunter-shoot-notes" placeholder="可选">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('hunter-shoot-modal')">取消</button>
+            <button class="btn btn-primary" onclick="submitHunterShoot()">确认录入</button>
+        </div>
+    </div>
+</div>
+
+<!-- 守卫守护快捷录入模态框（可选，只有守卫需要录入） -->
+<div class="modal-overlay" id="guard-protect-modal">
+    <div class="modal" style="max-width:500px;">
+        <div class="modal-title">🛡️ 守卫守护快捷录入 <span style="font-size:12px;color:var(--text-secondary);font-weight:normal;">（可选，仅守卫知晓）</span></div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;padding:10px;background:rgba(168,85,247,0.1);border-radius:8px;border:1px solid rgba(168,85,247,0.3);">
+            💡 这是守卫的私有信息，只有守卫自己知道守了谁。如果你不是守卫，可以跳过不录入。注意：守卫不能连续两晚守同一个人。
+        </div>
+        <div class="form-group">
+            <label>守护状态 <span class="required">*</span></label>
+            <select class="form-control" id="guard-protect-status" onchange="updateGuardProtectFields()">
+                <option value="protect">守护了</option>
+                <option value="empty">空守（没有守护任何人）</option>
+            </select>
+        </div>
+        <div class="form-group" id="guard-target-group">
+            <label>守护的玩家 <span class="required">*</span></label>
+            <select class="form-control" id="guard-target"></select>
+        </div>
+        <div class="form-group">
+            <label>备注</label>
+            <input type="text" class="form-control" id="guard-protect-notes" placeholder="可选">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal('guard-protect-modal')">取消</button>
+            <button class="btn btn-primary" onclick="submitGuardProtect()">确认录入</button>
         </div>
     </div>
 </div>

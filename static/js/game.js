@@ -2209,3 +2209,574 @@ async function trainMLModels() {
         content.innerHTML = '<div class="empty-state"><p>训练失败，请重试</p></div>';
     }
 }
+
+
+// ============================================================
+// 快捷录入功能
+// ============================================================
+
+// 辅助函数：通过行为名称查找行为ID
+function findActionId(name) {
+    const action = allActions.find(a => a.name === name);
+    return action ? action.id : null;
+}
+
+// ============================================================
+// 预言家起跳快捷录入
+// ============================================================
+function showProphetJumpModal() {
+    const modal = document.getElementById('prophet-jump-modal');
+    if (!modal) return;
+
+    const actorSelect = document.getElementById('prophet-jump-actor');
+    const targetSelect = document.getElementById('prophet-jump-target');
+    const badge1Select = document.getElementById('prophet-jump-badge1');
+    const badge2Select = document.getElementById('prophet-jump-badge2');
+
+    const playerOptions = '<option value="">请选择玩家</option>' + 
+        gamePlayers.map(p => `<option value="${p.player_id}">${escapeHtml(p.player_name)}</option>`).join('');
+
+    actorSelect.innerHTML = playerOptions;
+    targetSelect.innerHTML = playerOptions;
+    badge1Select.innerHTML = '<option value="">不设置</option>' + gamePlayers.map(p => `<option value="${p.player_id}">${escapeHtml(p.player_name)}</option>`).join('');
+    badge2Select.innerHTML = '<option value="">不设置</option>' + gamePlayers.map(p => `<option value="${p.player_id}">${escapeHtml(p.player_name)}</option>`).join('');
+
+    document.getElementById('prophet-jump-check-type').value = 'gold';
+    document.getElementById('prophet-jump-position').value = 'before';
+    document.getElementById('prophet-jump-notes').value = '';
+
+    updateProphetJumpPreview();
+    modal.classList.add('show');
+}
+
+function updateProphetJumpPreview() {
+    const checkType = document.getElementById('prophet-jump-check-type').value;
+    const position = document.getElementById('prophet-jump-position').value;
+    const positionMap = { 'before': '警前', 'after': '警后', 'below': '警下' };
+    const checkTypeMap = { 'gold': '金水', 'check': '查杀' };
+    const actionName = positionMap[position] + checkTypeMap[checkType];
+
+    let preview = '1. 跳预言家\n2. ' + actionName;
+    const badge1 = document.getElementById('prophet-jump-badge1').value;
+    const badge2 = document.getElementById('prophet-jump-badge2').value;
+    if (badge1 || badge2) {
+        const badge1Name = badge1 ? (gamePlayers.find(p => p.player_id == badge1) || {}).player_name || '?' : '?';
+        const badge2Name = badge2 ? (gamePlayers.find(p => p.player_id == badge2) || {}).player_name || '?' : '?';
+        preview += '\n3. 警徽流：' + badge1Name + ' ' + badge2Name;
+    }
+    document.getElementById('prophet-jump-preview').textContent = preview;
+}
+
+async function submitProphetJump() {
+    const actorId = document.getElementById('prophet-jump-actor').value;
+    const checkType = document.getElementById('prophet-jump-check-type').value;
+    const position = document.getElementById('prophet-jump-position').value;
+    const targetId = document.getElementById('prophet-jump-target').value;
+    const badge1 = document.getElementById('prophet-jump-badge1').value;
+    const badge2 = document.getElementById('prophet-jump-badge2').value;
+    const notes = document.getElementById('prophet-jump-notes').value;
+
+    if (!actorId) { showToast('请选择预言家', 'warning'); return; }
+    if (!targetId) { showToast('请选择查验目标', 'warning'); return; }
+
+    const jumpProphetId = findActionId('跳预言家');
+    const positionMap = { 'before': '警前', 'after': '警后', 'below': '警下' };
+    const checkTypeMap = { 'gold': '金水', 'check': '查杀' };
+    const checkActionName = positionMap[position] + checkTypeMap[checkType];
+    const checkActionId = findActionId(checkActionName);
+
+    if (!jumpProphetId) { showToast('未找到"跳预言家"行为', 'error'); return; }
+    if (!checkActionId) { showToast('未找到"' + checkActionName + '"行为', 'error'); return; }
+
+    const phase = currentGamePhase ? currentGamePhase.phase : null;
+    const round = currentGamePhase ? currentGamePhase.round : 1;
+
+    let fullNotes = notes;
+    if (badge1 || badge2) {
+        const badge1Name = badge1 ? (gamePlayers.find(p => p.player_id == badge1) || {}).player_name || '' : '';
+        const badge2Name = badge2 ? (gamePlayers.find(p => p.player_id == badge2) || {}).player_name || '' : '';
+        const badgeStr = ('警徽流 ' + badge1Name + ' ' + badge2Name).trim();
+        fullNotes = fullNotes ? (fullNotes + '；' + badgeStr) : badgeStr;
+    }
+
+    const prophetRole = allRoles.find(r => r.name === '预言家');
+    const prophetRoleId = prophetRole ? prophetRole.id : null;
+
+    const actionIds = [jumpProphetId, checkActionId];
+    const result = await api('POST', '/games/' + gameId + '/behaviors/batch', {
+        actor_id: parseInt(actorId),
+        action_ids: actionIds,
+        target_id: parseInt(targetId),
+        actor_role_id: prophetRoleId,
+        round_number: round,
+        phase: phase,
+        notes: fullNotes,
+        result_status: 'unknown'
+    });
+
+    if (result) {
+        showToast('成功创建 ' + result.data.created_count + ' 条行为记录', 'success');
+        hideModal('prophet-jump-modal');
+        await loadBehaviors();
+        await loadPredictions();
+    } else {
+        showToast('创建失败，请重试', 'error');
+    }
+}
+
+// ============================================================
+// 投票统计快捷录入
+// ============================================================
+function showVoteBatchModal() {
+    const modal = document.getElementById('vote-batch-modal');
+    if (!modal) return;
+    document.getElementById('vote-batch-type').value = 'banish';
+    renderVoteBatchList();
+    modal.classList.add('show');
+}
+
+function renderVoteBatchList() {
+    const list = document.getElementById('vote-batch-list');
+    if (!list) return;
+
+    const targetOptions = '<option value="">弃票</option>' + 
+        gamePlayers.map(p => `<option value="${p.player_id}">${escapeHtml(p.player_name)}</option>`).join('');
+
+    let html = '';
+    gamePlayers.forEach(function(p, index) {
+        html += '<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);">';
+        html += '<div style="min-width:100px;font-weight:500;">' + (index + 1) + '. ' + escapeHtml(p.player_name) + '</div>';
+        html += '<select class="form-control vote-batch-target" data-player-id="' + p.player_id + '" style="flex:1;">' + targetOptions + '</select>';
+        html += '</div>';
+    });
+
+    list.innerHTML = html;
+}
+
+function clearAllVotes() {
+    const selects = document.querySelectorAll('.vote-batch-target');
+    selects.forEach(function(s) { s.value = ''; });
+    showToast('已清空所有投票', 'info');
+}
+
+async function submitVoteBatch() {
+    const voteType = document.getElementById('vote-batch-type').value;
+    const voteTypeMap = { 'sheriff': '投警徽票', 'banish': '投放逐票' };
+    const abandonActionName = '弃票';
+
+    const voteActionId = findActionId(voteTypeMap[voteType]);
+    const abandonActionId = findActionId(abandonActionName);
+
+    if (!voteActionId) { showToast('未找到"' + voteTypeMap[voteType] + '"行为', 'error'); return; }
+
+    const phase = currentGamePhase ? currentGamePhase.phase : null;
+    const round = currentGamePhase ? currentGamePhase.round : 1;
+
+    const selects = document.querySelectorAll('.vote-batch-target');
+    let createdCount = 0;
+
+    for (let i = 0; i < selects.length; i++) {
+        const select = selects[i];
+        const actorId = parseInt(select.dataset.playerId);
+        const targetId = select.value;
+
+        if (targetId) {
+            const result = await api('POST', '/games/' + gameId + '/behaviors', {
+                actor_id: actorId,
+                action_id: voteActionId,
+                target_id: parseInt(targetId),
+                round_number: round,
+                phase: phase,
+                result_status: 'unknown'
+            });
+            if (result) createdCount++;
+        } else if (abandonActionId) {
+            const result = await api('POST', '/games/' + gameId + '/behaviors', {
+                actor_id: actorId,
+                action_id: abandonActionId,
+                round_number: round,
+                phase: phase,
+                result_status: 'unknown'
+            });
+            if (result) createdCount++;
+        }
+    }
+
+    showToast('成功创建 ' + createdCount + ' 条投票记录', 'success');
+    hideModal('vote-batch-modal');
+    await loadBehaviors();
+    await loadPredictions();
+}
+
+// ============================================================
+// 公布死讯快捷录入
+// ============================================================
+function showDeathInfoModal() {
+    const modal = document.getElementById('death-info-modal');
+    if (!modal) return;
+
+    const victim1Select = document.getElementById('death-info-victim1');
+    const victim2Select = document.getElementById('death-info-victim2');
+    const victim3Select = document.getElementById('death-info-victim3');
+
+    const playerOptions = '<option value="">请选择玩家</option>' + 
+        gamePlayers.map(p => `<option value="${p.player_id}">${escapeHtml(p.player_name)}</option>`).join('');
+
+    victim1Select.innerHTML = playerOptions;
+    victim2Select.innerHTML = playerOptions;
+    victim3Select.innerHTML = playerOptions;
+
+    document.getElementById('death-info-type').value = 'single';
+    document.getElementById('death-info-notes').value = '';
+    updateDeathInfoFields();
+    modal.classList.add('show');
+}
+
+function updateDeathInfoFields() {
+    const deathType = document.getElementById('death-info-type').value;
+    const victimsDiv = document.getElementById('death-info-victims');
+    const victim2Group = document.getElementById('death-info-victim2-group');
+    const victim3Group = document.getElementById('death-info-victim3-group');
+
+    if (deathType === 'safe') {
+        victimsDiv.style.display = 'none';
+    } else {
+        victimsDiv.style.display = 'block';
+        victim2Group.style.display = (deathType === 'double' || deathType === 'triple') ? 'block' : 'none';
+        victim3Group.style.display = (deathType === 'triple') ? 'block' : 'none';
+    }
+}
+
+async function submitDeathInfo() {
+    const deathType = document.getElementById('death-info-type').value;
+    const notes = document.getElementById('death-info-notes').value;
+    const deathTypeMap = { 'safe': null, 'single': '单死', 'double': '双死', 'triple': '三死' };
+    const actionName = deathTypeMap[deathType];
+
+    const phase = currentGamePhase ? currentGamePhase.phase : null;
+    const round = currentGamePhase ? currentGamePhase.round : 1;
+
+    if (deathType === 'safe') {
+        showToast('平安夜已记录', 'success');
+        hideModal('death-info-modal');
+        return;
+    }
+
+    const actionId = findActionId(actionName);
+    if (!actionId) { showToast('未找到"' + actionName + '"行为', 'error'); return; }
+
+    const victim1 = document.getElementById('death-info-victim1').value;
+    const victim2 = document.getElementById('death-info-victim2').value;
+    const victim3 = document.getElementById('death-info-victim3').value;
+
+    const victims = [];
+    if (victim1) victims.push(parseInt(victim1));
+    if (victim2) victims.push(parseInt(victim2));
+    if (victim3) victims.push(parseInt(victim3));
+
+    if (victims.length === 0) { showToast('请选择至少一个死者', 'warning'); return; }
+
+    let createdCount = 0;
+    for (let i = 0; i < victims.length; i++) {
+        const victimId = victims[i];
+        const result = await api('POST', '/games/' + gameId + '/behaviors', {
+            actor_id: victimId,
+            action_id: actionId,
+            round_number: round,
+            phase: phase,
+            notes: notes,
+            result_status: 'unknown'
+        });
+        if (result) createdCount++;
+    }
+
+    showToast('成功创建 ' + createdCount + ' 条死亡记录', 'success');
+    hideModal('death-info-modal');
+    await loadBehaviors();
+    await loadPredictions();
+}
+
+// 为预言家起跳模态框的表单元素添加事件监听
+document.addEventListener('DOMContentLoaded', function() {
+    const checkTypeSelect = document.getElementById('prophet-jump-check-type');
+    const positionSelect = document.getElementById('prophet-jump-position');
+    const badge1Select = document.getElementById('prophet-jump-badge1');
+    const badge2Select = document.getElementById('prophet-jump-badge2');
+
+    if (checkTypeSelect) checkTypeSelect.addEventListener('change', updateProphetJumpPreview);
+    if (positionSelect) positionSelect.addEventListener('change', updateProphetJumpPreview);
+    if (badge1Select) badge1Select.addEventListener('change', updateProphetJumpPreview);
+    if (badge2Select) badge2Select.addEventListener('change', updateProphetJumpPreview);
+});
+
+
+// ============================================================
+// 女巫用药快捷录入（可选，仅女巫知晓）
+// ============================================================
+function showWitchPotionModal() {
+    const modal = document.getElementById('witch-potion-modal');
+    if (!modal) return;
+
+    const antidoteSelect = document.getElementById('witch-antidote-target');
+    const poisonSelect = document.getElementById('witch-poison-target');
+
+    const playerOptions = '<option value="">请选择玩家</option>' + 
+        gamePlayers.map(p => `<option value="${p.player_id}">${escapeHtml(p.player_name)}</option>`).join('');
+
+    antidoteSelect.innerHTML = playerOptions;
+    poisonSelect.innerHTML = playerOptions;
+
+    document.getElementById('witch-potion-type').value = 'antidote';
+    document.getElementById('witch-potion-notes').value = '';
+    updateWitchPotionFields();
+
+    modal.classList.add('show');
+}
+
+function updateWitchPotionFields() {
+    const potionType = document.getElementById('witch-potion-type').value;
+    const antidoteGroup = document.getElementById('witch-antidote-group');
+    const poisonGroup = document.getElementById('witch-poison-group');
+
+    if (potionType === 'antidote') {
+        antidoteGroup.style.display = 'block';
+        poisonGroup.style.display = 'none';
+    } else if (potionType === 'poison') {
+        antidoteGroup.style.display = 'none';
+        poisonGroup.style.display = 'block';
+    } else if (potionType === 'both') {
+        antidoteGroup.style.display = 'block';
+        poisonGroup.style.display = 'block';
+    } else {
+        antidoteGroup.style.display = 'none';
+        poisonGroup.style.display = 'none';
+    }
+}
+
+async function submitWitchPotion() {
+    const potionType = document.getElementById('witch-potion-type').value;
+    const antidoteTarget = document.getElementById('witch-antidote-target').value;
+    const poisonTarget = document.getElementById('witch-poison-target').value;
+    const notes = document.getElementById('witch-potion-notes').value;
+
+    const phase = currentGamePhase ? currentGamePhase.phase : null;
+    const round = currentGamePhase ? currentGamePhase.round : 1;
+
+    let createdCount = 0;
+
+    if (potionType === 'antidote' || potionType === 'both') {
+        if (!antidoteTarget) {
+            showToast('请选择解药救的玩家', 'warning');
+            return;
+        }
+        const actionId = findActionId('使用解药');
+        if (!actionId) {
+            showToast('未找到"使用解药"行为，请先在行为库中添加', 'error');
+            return;
+        }
+        const result = await api('POST', '/games/' + gameId + '/behaviors', {
+            actor_id: parseInt(antidoteTarget),
+            action_id: actionId,
+            round_number: round,
+            phase: phase,
+            notes: notes,
+            result_status: 'unknown'
+        });
+        if (result) createdCount++;
+    }
+
+    if (potionType === 'poison' || potionType === 'both') {
+        if (!poisonTarget) {
+            showToast('请选择毒药毒的玩家', 'warning');
+            return;
+        }
+        const actionId = findActionId('使用毒药');
+        if (!actionId) {
+            showToast('未找到"使用毒药"行为，请先在行为库中添加', 'error');
+            return;
+        }
+        const result = await api('POST', '/games/' + gameId + '/behaviors', {
+            actor_id: parseInt(poisonTarget),
+            action_id: actionId,
+            round_number: round,
+            phase: phase,
+            notes: notes,
+            result_status: 'unknown'
+        });
+        if (result) createdCount++;
+    }
+
+    if (potionType === 'none') {
+        showToast('已记录女巫未用药', 'success');
+        hideModal('witch-potion-modal');
+        return;
+    }
+
+    showToast('成功创建 ' + createdCount + ' 条女巫用药记录', 'success');
+    hideModal('witch-potion-modal');
+    await loadBehaviors();
+    await loadPredictions();
+}
+
+// ============================================================
+// 猎人开枪快捷录入（公开信息）
+// ============================================================
+function showHunterShootModal() {
+    const modal = document.getElementById('hunter-shoot-modal');
+    if (!modal) return;
+
+    const shooterSelect = document.getElementById('hunter-shooter');
+    const targetSelect = document.getElementById('hunter-target');
+
+    const playerOptions = '<option value="">请选择玩家</option>' + 
+        gamePlayers.map(p => `<option value="${p.player_id}">${escapeHtml(p.player_name)}</option>`).join('');
+
+    shooterSelect.innerHTML = playerOptions;
+    targetSelect.innerHTML = playerOptions;
+
+    document.getElementById('hunter-shoot-status').value = 'shoot';
+    document.getElementById('hunter-shoot-notes').value = '';
+    updateHunterShootFields();
+
+    modal.classList.add('show');
+}
+
+function updateHunterShootFields() {
+    const shootStatus = document.getElementById('hunter-shoot-status').value;
+    const shooterGroup = document.getElementById('hunter-shooter-group');
+    const targetGroup = document.getElementById('hunter-target-group');
+
+    if (shootStatus === 'shoot') {
+        shooterGroup.style.display = 'block';
+        targetGroup.style.display = 'block';
+    } else {
+        shooterGroup.style.display = 'none';
+        targetGroup.style.display = 'none';
+    }
+}
+
+async function submitHunterShoot() {
+    const shootStatus = document.getElementById('hunter-shoot-status').value;
+    const shooterId = document.getElementById('hunter-shooter').value;
+    const targetId = document.getElementById('hunter-target').value;
+    const notes = document.getElementById('hunter-shoot-notes').value;
+
+    const phase = currentGamePhase ? currentGamePhase.phase : null;
+    const round = currentGamePhase ? currentGamePhase.round : 1;
+
+    if (shootStatus === 'noshoot') {
+        showToast('已记录猎人未开枪', 'success');
+        hideModal('hunter-shoot-modal');
+        return;
+    }
+
+    if (!shooterId) {
+        showToast('请选择猎人（开枪者）', 'warning');
+        return;
+    }
+    if (!targetId) {
+        showToast('请选择开枪带走的玩家', 'warning');
+        return;
+    }
+
+    const actionId = findActionId('猎人开枪');
+    if (!actionId) {
+        showToast('未找到"猎人开枪"行为，请先在行为库中添加', 'error');
+        return;
+    }
+
+    const result = await api('POST', '/games/' + gameId + '/behaviors', {
+        actor_id: parseInt(shooterId),
+        action_id: actionId,
+        target_id: parseInt(targetId),
+        round_number: round,
+        phase: phase,
+        notes: notes,
+        result_status: 'unknown'
+    });
+
+    if (result) {
+        showToast('成功创建猎人开枪记录', 'success');
+        hideModal('hunter-shoot-modal');
+        await loadBehaviors();
+        await loadPredictions();
+    } else {
+        showToast('创建失败，请重试', 'error');
+    }
+}
+
+// ============================================================
+// 守卫守护快捷录入（可选，仅守卫知晓）
+// ============================================================
+function showGuardProtectModal() {
+    const modal = document.getElementById('guard-protect-modal');
+    if (!modal) return;
+
+    const targetSelect = document.getElementById('guard-target');
+
+    const playerOptions = '<option value="">请选择玩家</option>' + 
+        gamePlayers.map(p => `<option value="${p.player_id}">${escapeHtml(p.player_name)}</option>`).join('');
+
+    targetSelect.innerHTML = playerOptions;
+
+    document.getElementById('guard-protect-status').value = 'protect';
+    document.getElementById('guard-protect-notes').value = '';
+    updateGuardProtectFields();
+
+    modal.classList.add('show');
+}
+
+function updateGuardProtectFields() {
+    const protectStatus = document.getElementById('guard-protect-status').value;
+    const targetGroup = document.getElementById('guard-target-group');
+
+    if (protectStatus === 'protect') {
+        targetGroup.style.display = 'block';
+    } else {
+        targetGroup.style.display = 'none';
+    }
+}
+
+async function submitGuardProtect() {
+    const protectStatus = document.getElementById('guard-protect-status').value;
+    const targetId = document.getElementById('guard-target').value;
+    const notes = document.getElementById('guard-protect-notes').value;
+
+    const phase = currentGamePhase ? currentGamePhase.phase : null;
+    const round = currentGamePhase ? currentGamePhase.round : 1;
+
+    if (protectStatus === 'empty') {
+        showToast('已记录守卫空守', 'success');
+        hideModal('guard-protect-modal');
+        return;
+    }
+
+    if (!targetId) {
+        showToast('请选择守护的玩家', 'warning');
+        return;
+    }
+
+    const actionId = findActionId('守卫守护');
+    if (!actionId) {
+        showToast('未找到"守卫守护"行为，请先在行为库中添加', 'error');
+        return;
+    }
+
+    const result = await api('POST', '/games/' + gameId + '/behaviors', {
+        actor_id: parseInt(targetId),
+        action_id: actionId,
+        round_number: round,
+        phase: phase,
+        notes: notes,
+        result_status: 'unknown'
+    });
+
+    if (result) {
+        showToast('成功创建守卫守护记录', 'success');
+        hideModal('guard-protect-modal');
+        await loadBehaviors();
+        await loadPredictions();
+    } else {
+        showToast('创建失败，请重试', 'error');
+    }
+}
