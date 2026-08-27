@@ -504,7 +504,7 @@ def get_prediction_evidence(game_id, player_id):
         action_name = b['action_name']
         action_type = b['action_type']
         weight = b['default_weight']
-        result_status = b.get('result_status', 'unconfirmed')
+        result_status = b.get('result_status', 'unknown')
 
         # 分析这个行为对身份预测的影响
         influence = 'neutral'
@@ -525,7 +525,7 @@ def get_prediction_evidence(game_id, player_id):
             if result_status == 'correct':
                 influence = 'good'
                 influence_desc = f'{action_name}（正确），增加好人概率'
-            elif result_status == 'wrong':
+            elif result_status == 'incorrect':
                 influence = 'werewolf'
                 influence_desc = f'{action_name}（错误），增加狼人概率'
             else:

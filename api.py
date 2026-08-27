@@ -680,7 +680,8 @@ def list_behaviors(game_id):
 def create_behavior(game_id):
     """新增行为记录（核心功能）
     必填：actor_id, action_id
-    可空：target_id, actor_role_id, actor_camp, round_number, phase, notes
+    可空：target_id, actor_role_id, actor_camp, round_number, phase, notes, result_status
+    result_status: unknown(默认) / correct / incorrect
     """
     data = request.get_json() or {}
     actor_id = data.get('actor_id')
@@ -691,6 +692,7 @@ def create_behavior(game_id):
     round_number = data.get('round_number')
     phase = data.get('phase')
     notes = data.get('notes', '')
+    result_status = data.get('result_status', 'unknown')
 
     if not actor_id:
         return fail("行为发起者ID不能为空")
@@ -704,9 +706,9 @@ def create_behavior(game_id):
 
     new_id = execute_write(
         f"""INSERT INTO behavior_records
-            (game_id, actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes)
-            VALUES ({ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()})""",
-        (game_id, actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes)
+            (game_id, actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes, result_status)
+            VALUES ({ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()})""",
+        (game_id, actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes, result_status)
     )
     behavior = query_one("SELECT * FROM behavior_records WHERE id = " + ph(), (new_id,))
     return ok(behavior, "行为记录创建成功")
@@ -716,7 +718,7 @@ def create_behavior(game_id):
 def create_behaviors_batch(game_id):
     """批量新增行为记录（同一发起者/目标/声明，多个不同行为）
     必填：actor_id, action_ids（数组）
-    可空：target_id, actor_role_id, actor_camp, round_number, phase, notes
+    可空：target_id, actor_role_id, actor_camp, round_number, phase, notes, result_status
     """
     data = request.get_json() or {}
     actor_id = data.get('actor_id')
@@ -727,6 +729,7 @@ def create_behaviors_batch(game_id):
     round_number = data.get('round_number')
     phase = data.get('phase')
     notes = data.get('notes', '')
+    result_status = data.get('result_status', 'unknown')
 
     if not actor_id:
         return fail("行为发起者ID不能为空")
@@ -742,9 +745,9 @@ def create_behaviors_batch(game_id):
     for action_id in action_ids:
         new_id = execute_write(
             f"""INSERT INTO behavior_records
-                (game_id, actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes)
-                VALUES ({ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()})""",
-            (game_id, actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes)
+                (game_id, actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes, result_status)
+                VALUES ({ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()})""",
+            (game_id, actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes, result_status)
         )
         created_ids.append(new_id)
 
@@ -753,7 +756,9 @@ def create_behaviors_batch(game_id):
 
 @api.route('/behaviors/<int:behavior_id>', methods=['PUT'])
 def update_behavior(behavior_id):
-    """修改行为记录"""
+    """修改行为记录
+    支持修改result_status字段: unknown / correct / incorrect
+    """
     data = request.get_json() or {}
     behavior = query_one("SELECT * FROM behavior_records WHERE id = " + ph(), (behavior_id,))
     if not behavior:
@@ -767,14 +772,15 @@ def update_behavior(behavior_id):
     round_number = data.get('round_number', behavior['round_number'])
     phase = data.get('phase', behavior['phase'])
     notes = data.get('notes', behavior['notes'])
+    result_status = data.get('result_status', behavior.get('result_status', 'unknown'))
 
     execute_write(
         f"""UPDATE behavior_records
             SET actor_id={ph()}, target_id={ph()}, action_id={ph()},
                 actor_role_id={ph()}, actor_camp={ph()}, round_number={ph()},
-                phase={ph()}, notes={ph()}
+                phase={ph()}, notes={ph()}, result_status={ph()}
             WHERE id={ph()}""",
-        (actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes, behavior_id)
+        (actor_id, target_id, action_id, actor_role_id, actor_camp, round_number, phase, notes, result_status, behavior_id)
     )
     behavior = query_one("SELECT * FROM behavior_records WHERE id = " + ph(), (behavior_id,))
     return ok(behavior, "行为记录更新成功")
@@ -1356,6 +1362,14 @@ def set_confirmed_identity(game_id):
         (game_id, player_id, role_id, camp, reason)
     )
 
+    # 触发行为结果状态自动推测
+    try:
+        from result_status_inference import auto_infer_result_status
+        result_status_result = auto_infer_result_status(game_id, player_id, camp, role_id)
+    except Exception as e:
+        print(f"行为结果状态推测失败: {e}")
+        result_status_result = {'updated': 0}
+
     # 触发回溯推断（如果确认了阵营）
     if camp:
         try:
@@ -1372,7 +1386,8 @@ def set_confirmed_identity(game_id):
         inference_results = None
 
     return ok({
-        'message': '确认身份设置成功，已触发回溯推断和逻辑推理',
+        'message': '确认身份设置成功，已触发行为结果推测、回溯推断和逻辑推理',
+        'result_status_updated': result_status_result.get('updated', 0),
         'inference_results': inference_results
     })
 
@@ -1385,20 +1400,26 @@ def delete_confirmed_identity(identity_id):
         return fail("确认身份不存在", 404)
     game_id = identity['game_id']
     execute_write(f"DELETE FROM game_confirmed_identities WHERE id = {ph()}", (identity_id,))
-    
-    # 删除后重新运行逻辑推理（重置行为状态）
+
+    # 删除后重新推测所有行为结果状态
     try:
-        # 先重置所有行为记录的状态
-        execute_write(
-            f"UPDATE behavior_records SET result_status = 'unconfirmed' WHERE game_id = {ph()}",
-            (game_id,)
-        )
+        from result_status_inference import re_infer_all_result_status
+        re_infer_result = re_infer_all_result_status(game_id)
+    except Exception as e:
+        print(f"重新推测行为结果状态失败: {e}")
+        re_infer_result = {'updated': 0}
+
+    # 删除后重新运行逻辑推理
+    try:
         from logic_engine import run_logic_inference
         run_logic_inference(game_id)
     except Exception as e:
         print(f"重新推理失败: {e}")
-    
-    return ok(message="确认身份已删除，已重新推理")
+
+    return ok({
+        'message': '确认身份已删除，已重新推测行为结果状态和逻辑推理',
+        'result_status_updated': re_infer_result.get('updated', 0)
+    })
 
 
 # ============================================================
@@ -1429,7 +1450,7 @@ def run_logic_inference_api(game_id):
         # 先重置所有行为记录的状态
         print(f"[逻辑推理] 开始重置行为记录状态")
         execute_write(
-            f"UPDATE behavior_records SET result_status = 'unconfirmed' WHERE game_id = {ph()}",
+            f"UPDATE behavior_records SET result_status = 'unknown' WHERE game_id = {ph()}",
             (game_id,)
         )
         print(f"[逻辑推理] 行为记录状态重置完成")
@@ -1448,6 +1469,51 @@ def run_logic_inference_api(game_id):
         print(f"[逻辑推理] 发生错误: {e}")
         print(f"[逻辑推理] 错误堆栈: {traceback.format_exc()}")
         return fail(f"逻辑推理失败: {str(e)}", 500)
+
+
+# ============================================================
+# 10.5 行为结果状态推测
+# ============================================================
+@api.route('/games/<int:game_id>/result_status/re_infer', methods=['POST'])
+def re_infer_result_status(game_id):
+    """手动触发行为结果状态的重新推测
+
+    根据对局中所有已确认的身份，重新推测所有行为记录的结果状态。
+    """
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+
+    try:
+        from result_status_inference import re_infer_all_result_status
+        result = re_infer_all_result_status(game_id)
+        return ok({
+            'message': '行为结果状态重新推测完成',
+            'updated_count': result.get('updated', 0)
+        })
+    except Exception as e:
+        import traceback
+        print(f"[行为结果推测] 发生错误: {e}")
+        print(f"[行为结果推测] 错误堆栈: {traceback.format_exc()}")
+        return fail(f"行为结果状态推测失败: {str(e)}", 500)
+
+
+@api.route('/games/<int:game_id>/result_status/reset', methods=['POST'])
+def reset_result_status(game_id):
+    """重置对局中所有行为记录的结果状态为unknown"""
+    game = query_one("SELECT * FROM games WHERE id = " + ph(), (game_id,))
+    if not game:
+        return fail("对局不存在", 404)
+
+    try:
+        from result_status_inference import reset_result_status
+        reset_result_status(game_id)
+        return ok(message='行为结果状态已重置为unknown')
+    except Exception as e:
+        import traceback
+        print(f"[行为结果推测] 重置失败: {e}")
+        print(f"[行为结果推测] 错误堆栈: {traceback.format_exc()}")
+        return fail(f"重置失败: {str(e)}", 500)
 
 
 # ============================================================

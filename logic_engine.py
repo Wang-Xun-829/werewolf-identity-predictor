@@ -283,7 +283,7 @@ def apply_stance_correction_rule(game_id, confirmed, results):
         
         # 获取该行为的所有记录（有目标的）
         records = query_all(
-            f"SELECT * FROM behavior_records WHERE game_id = {ph()} AND action_id = {ph()} AND target_id IS NOT NULL AND result_status = 'unconfirmed'",
+            f"SELECT * FROM behavior_records WHERE game_id = {ph()} AND action_id = {ph()} AND target_id IS NOT NULL AND result_status = 'unknown'",
             (game_id, action_id)
         )
         
@@ -304,7 +304,7 @@ def apply_stance_correction_rule(game_id, confirmed, results):
                         new_status = 'correct'  # 保对人
                         fact = f'玩家{actor_id}保玩家{target_id}，玩家{target_id}是好人 → 保对人'
                     else:
-                        new_status = 'wrong'  # 保错人
+                        new_status = 'incorrect'  # 保错人
                         fact = f'玩家{actor_id}保玩家{target_id}，玩家{target_id}是狼人 → 保错人'
                 else:
                     # 踩人
@@ -312,7 +312,7 @@ def apply_stance_correction_rule(game_id, confirmed, results):
                         new_status = 'correct'  # 踩对人
                         fact = f'玩家{actor_id}踩玩家{target_id}，玩家{target_id}是狼人 → 踩对人'
                     else:
-                        new_status = 'wrong'  # 踩错人
+                        new_status = 'incorrect'  # 踩错人
                         fact = f'玩家{actor_id}踩玩家{target_id}，玩家{target_id}是好人 → 踩错人'
                 
                 # 更新行为记录状态
@@ -323,7 +323,7 @@ def apply_stance_correction_rule(game_id, confirmed, results):
                 results['updated_behaviors'].append({
                     'record_id': record_id,
                     'action_name': action_name,
-                    'old_status': 'unconfirmed',
+                    'old_status': 'unknown',
                     'new_status': new_status
                 })
                 results['derived_facts'].append(fact)
@@ -358,7 +358,7 @@ def apply_side_correction_rule(game_id, confirmed, results):
         # 获取站边记录（有目标的，且目标是跳预言家的）
         records = query_all(
             f"""SELECT br.* FROM behavior_records br
-               WHERE br.game_id = {ph()} AND br.action_id = {ph()} AND br.target_id IS NOT NULL AND br.result_status = 'unconfirmed'""",
+               WHERE br.game_id = {ph()} AND br.action_id = {ph()} AND br.target_id IS NOT NULL AND br.result_status = 'unknown'""",
             (game_id, action_id)
         )
         
@@ -377,7 +377,7 @@ def apply_side_correction_rule(game_id, confirmed, results):
                     new_status = 'correct'  # 站对边
                     fact = f'玩家{actor_id}站边玩家{target_id}，玩家{target_id}是真预言家 → 站对边'
                 elif target_confirmed.get('camp') == '狼人':
-                    new_status = 'wrong'  # 站错边
+                    new_status = 'incorrect'  # 站错边
                     fact = f'玩家{actor_id}站边玩家{target_id}，玩家{target_id}是狼人 → 站错边'
                 else:
                     continue
@@ -390,7 +390,7 @@ def apply_side_correction_rule(game_id, confirmed, results):
                 results['updated_behaviors'].append({
                     'record_id': record_id,
                     'action_name': action_name,
-                    'old_status': 'unconfirmed',
+                    'old_status': 'unknown',
                     'new_status': new_status
                 })
                 results['derived_facts'].append(fact)
@@ -425,7 +425,7 @@ def apply_vote_correction_rule(game_id, confirmed, results):
         
         # 获取投票记录
         records = query_all(
-            f"SELECT * FROM behavior_records WHERE game_id = {ph()} AND action_id = {ph()} AND target_id IS NOT NULL AND result_status = 'unconfirmed'",
+            f"SELECT * FROM behavior_records WHERE game_id = {ph()} AND action_id = {ph()} AND target_id IS NOT NULL AND result_status = 'unknown'",
             (game_id, action_id)
         )
         
@@ -451,7 +451,7 @@ def apply_vote_correction_rule(game_id, confirmed, results):
                         new_status = 'correct'
                         fact = f'玩家{actor_id}投警徽票给玩家{target_id}，玩家{target_id}是真预言家 → 投对警徽票'
                     elif target_camp == '狼人':
-                        new_status = 'wrong'
+                        new_status = 'incorrect'
                         fact = f'玩家{actor_id}投警徽票给玩家{target_id}，玩家{target_id}是狼人 → 投错警徽票'
                     else:
                         continue
@@ -461,7 +461,7 @@ def apply_vote_correction_rule(game_id, confirmed, results):
                         new_status = 'correct'
                         fact = f'玩家{actor_id}投放逐票给玩家{target_id}，玩家{target_id}是狼人 → 投对放逐票'
                     elif target_camp == '好人':
-                        new_status = 'wrong'
+                        new_status = 'incorrect'
                         fact = f'玩家{actor_id}投放逐票给玩家{target_id}，玩家{target_id}是好人 → 投错放逐票'
                     else:
                         continue
@@ -476,7 +476,7 @@ def apply_vote_correction_rule(game_id, confirmed, results):
                 results['updated_behaviors'].append({
                     'record_id': record_id,
                     'action_name': action_name,
-                    'old_status': 'unconfirmed',
+                    'old_status': 'unknown',
                     'new_status': new_status
                 })
                 results['derived_facts'].append(fact)
@@ -502,14 +502,14 @@ def get_inference_summary(game_id):
         (game_id,)
     )
     
-    # 获取所有已更新的行为记录（非unconfirmed状态）
+    # 获取所有已更新的行为记录（非unknown状态）
     updated_behaviors = query_all(
         f"""SELECT br.*, p1.name as actor_name, p2.name as target_name, a.name as action_name
            FROM behavior_records br
            JOIN players p1 ON br.actor_id = p1.id
            LEFT JOIN players p2 ON br.target_id = p2.id
            JOIN actions a ON br.action_id = a.id
-           WHERE br.game_id = {ph()} AND br.result_status != 'unconfirmed'
+           WHERE br.game_id = {ph()} AND br.result_status != 'unknown'
            ORDER BY br.created_at""",
         (game_id,)
     )

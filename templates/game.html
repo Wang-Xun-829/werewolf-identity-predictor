@@ -173,6 +173,8 @@
         <button class="btn btn-secondary" onclick="viewScores()">📊 查看预测打分</button>
         <button class="btn btn-info" onclick="showScenarioModal()">🔀 情景管理</button>
         <button class="btn btn-primary" onclick="showRelationshipModal()">🕸️ 关系图/回溯</button>
+        <button class="btn btn-secondary" onclick="reInferResultStatus()" title="根据已确认身份重新推测所有行为结果状态">🔄 重推结果状态</button>
+        <button class="btn btn-secondary" onclick="resetResultStatus()" title="重置所有行为结果状态为未知">↩️ 重置结果状态</button>
     </div>
     <div id="game-result" style="margin-top:16px;"></div>
 </div>
@@ -422,6 +424,15 @@
         <div class="form-group">
             <label>备注</label>
             <input type="text" class="form-control" id="edit-behavior-notes" placeholder="可选">
+        </div>
+        <div class="form-group">
+            <label>行为结果状态</label>
+            <select class="form-control" id="edit-behavior-result-status">
+                <option value="unknown">未知（系统自动推测）</option>
+                <option value="correct">正确（保对/踩对/站对/投对）</option>
+                <option value="incorrect">错误（保错/踩错/站错/投错）</option>
+            </select>
+            <small style="color:#94a3b8;font-size:12px;">当目标玩家身份被确认后，系统会自动推测结果状态；你也可以手动修改。</small>
         </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="hideModal('edit-behavior-modal')">取消</button>

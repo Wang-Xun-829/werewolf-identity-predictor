@@ -356,12 +356,20 @@ function renderBehaviors(behaviors) {
         // 该轮的行为记录
         roundBehaviors.forEach(b => {
             const phaseInfo = b.phase || '';
+            // 结果状态显示
+            let resultStatusBadge = '';
+            if (b.result_status === 'correct') {
+                resultStatusBadge = '<span class="badge badge-good" title="行为结果正确">✓ 正确</span>';
+            } else if (b.result_status === 'incorrect') {
+                resultStatusBadge = '<span class="badge badge-bad" title="行为结果错误">✕ 错误</span>';
+            }
             html += `<div class="timeline-item">
                 <div class="timeline-dot"></div>
                 <div class="timeline-content">
                     <div class="timeline-header">
                         <span class="timeline-index">#${globalIndex++}</span>
                         ${phaseInfo ? `<span class="badge badge-info">${escapeHtml(phaseInfo)}</span>` : ''}
+                        ${resultStatusBadge}
                         ${b.actor_role_name ? `<span class="badge badge-good">声明:${escapeHtml(b.actor_role_name)}</span>` : ''}
                         ${b.actor_camp ? campBadge(b.actor_camp) : ''}
                     </div>
@@ -1741,6 +1749,9 @@ async function editBehavior(behavior_id) {
     // 填充备注
     document.getElementById('edit-behavior-notes').value = behavior.notes || '';
 
+    // 填充结果状态
+    document.getElementById('edit-behavior-result-status').value = behavior.result_status || 'unknown';
+
     // 显示模态框
     hideModal('edit-behavior-modal');
     document.getElementById('edit-behavior-modal').classList.add('show');
@@ -1757,6 +1768,7 @@ async function saveBehaviorEdit() {
     const round_number = document.getElementById('edit-behavior-round').value;
     const phase = document.getElementById('edit-behavior-phase').value;
     const notes = document.getElementById('edit-behavior-notes').value.trim();
+    const result_status = document.getElementById('edit-behavior-result-status').value;
 
     if (!actor_id) {
         showToast('请选择行为发起者', 'error');
@@ -1769,7 +1781,8 @@ async function saveBehaviorEdit() {
 
     const data = {
         actor_id: actor_id,
-        action_id: action_id
+        action_id: action_id,
+        result_status: result_status
     };
     if (target_id) data.target_id = parseInt(target_id);
     if (actor_role_id) data.actor_role_id = parseInt(actor_role_id);
@@ -1782,6 +1795,50 @@ async function saveBehaviorEdit() {
     if (result) {
         showToast('行为记录更新成功', 'success');
         hideModal('edit-behavior-modal');
+        // 刷新预测结果和行为记录
+        await loadPredictions();
+        const gameResult = await api('GET', '/games/' + gameId);
+        if (gameResult && gameResult.data) {
+            gameData = gameResult.data;
+            renderBehaviors(gameData.behaviors || []);
+        }
+    }
+}
+
+
+// ============================================================
+// 行为结果状态管理
+// ============================================================
+
+// 重新推测所有行为结果状态
+async function reInferResultStatus() {
+    if (!confirm('确定要根据已确认身份重新推测所有行为结果状态吗？')) {
+        return;
+    }
+    showToast('正在重新推测行为结果状态...', 'info');
+    const result = await api('POST', '/games/' + gameId + '/result_status/re_infer');
+    if (result) {
+        const count = result.data ? result.data.updated_count : 0;
+        showToast(`重新推测完成，共更新 ${count} 条行为记录`, 'success');
+        // 刷新预测结果和行为记录
+        await loadPredictions();
+        const gameResult = await api('GET', '/games/' + gameId);
+        if (gameResult && gameResult.data) {
+            gameData = gameResult.data;
+            renderBehaviors(gameData.behaviors || []);
+        }
+    }
+}
+
+// 重置所有行为结果状态为未知
+async function resetResultStatus() {
+    if (!confirm('确定要重置所有行为结果状态为未知吗？')) {
+        return;
+    }
+    showToast('正在重置行为结果状态...', 'info');
+    const result = await api('POST', '/games/' + gameId + '/result_status/reset');
+    if (result) {
+        showToast('行为结果状态已重置为未知', 'success');
         // 刷新预测结果和行为记录
         await loadPredictions();
         const gameResult = await api('GET', '/games/' + gameId);

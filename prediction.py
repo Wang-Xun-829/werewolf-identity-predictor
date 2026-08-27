@@ -1294,38 +1294,45 @@ def predict_game(game_id, scenario_id=None):
                 log_probs[rid] += math.log(max(w, 0.0001))
                 
                 # 改进：行为结果状态修正
-                # 根据行为记录的result_status（correct/wrong）调整似然度
-                result_status = b.get("result_status", "unconfirmed")
-                if result_status != "unconfirmed":
+                # 根据行为记录的result_status（correct/incorrect）调整似然度
+                result_status = b.get("result_status", "unknown")
+                if result_status != "unknown":
                     action_name = action_names.get(action_id, "")
                     is_defend = "保" in action_name  # 保人类行为
                     is_attack = "踩" in action_name  # 踩人类行为
                     is_side = "站边" in action_name  # 站边行为
                     is_vote = "票" in action_name  # 投票行为
-                    
+                    is_check = "查杀" in action_name or "金水" in action_name  # 查验类行为
+
                     # 确定修正强度
+                    # 保对/踩对：强好人证据（好人更可能保对人、踩对狼）
+                    # 保错/踩错：强狼人证据（狼人更可能保错人、踩错好人）
                     if is_defend or is_attack:
-                        correct_factor = 1.5  # 保对/踩对：好人证据
-                        wrong_factor = 1.5    # 保错/踩错：狼人证据
+                        correct_factor = 1.6  # 保对/踩对：好人证据
+                        incorrect_factor = 1.6  # 保错/踩错：狼人证据
+                    elif is_check:
+                        # 查验类行为：结果状态对身份判断影响更大
+                        correct_factor = 1.5  # 查验正确：预言家证据
+                        incorrect_factor = 1.5  # 查验错误：悍跳狼证据
                     elif is_side or is_vote:
-                        correct_factor = 1.3  # 站对/投对：好人证据
-                        wrong_factor = 1.3    # 站错/投错：狼人证据
+                        correct_factor = 1.4  # 站对/投对：好人证据
+                        incorrect_factor = 1.4  # 站错/投错：狼人证据
                     else:
                         correct_factor = 1.2
-                        wrong_factor = 1.2
-                    
+                        incorrect_factor = 1.2
+
                     if result_status == "correct":
                         # 行为正确：增加好人阵营的似然度
                         if role_camps.get(rid) == "好人":
                             log_probs[rid] += math.log(correct_factor)
                         else:
                             log_probs[rid] += math.log(1.0 / correct_factor)
-                    elif result_status == "wrong":
+                    elif result_status == "incorrect":
                         # 行为错误：增加狼人阵营的似然度
                         if role_camps.get(rid) == "狼人":
-                            log_probs[rid] += math.log(wrong_factor)
+                            log_probs[rid] += math.log(incorrect_factor)
                         else:
-                            log_probs[rid] += math.log(1.0 / wrong_factor)
+                            log_probs[rid] += math.log(1.0 / incorrect_factor)
 
                 # 改进#第四阶段：个性化似然度修正
                 # 根据该玩家历史对局中拿不同身份时的行为倾向，调整似然度
