@@ -325,6 +325,18 @@ const PHASE_ORDER = {
     '遗言': 8
 };
 
+// 加载行为记录
+async function loadBehaviors() {
+    try {
+        const result = await api('GET', '/games/' + gameId + '/behaviors');
+        if (result && result.data) {
+            renderBehaviors(result.data);
+        }
+    } catch (error) {
+        console.error('加载行为记录失败:', error);
+    }
+}
+
 // 渲染行为记录（按轮次+阶段分组，时间线样式）
 function renderBehaviors(behaviors) {
     const container = document.getElementById('behavior-list');
