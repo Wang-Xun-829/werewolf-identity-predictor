@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}对局详情 - 狼人杀身份预测{% endblock %}
 {% block content %}
 <div class="card">
@@ -81,6 +81,7 @@
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button class="btn btn-primary btn-sm" onclick="advancePhase()">⏭️ 下一环节</button>
                         <button class="btn btn-danger btn-sm" onclick="wolfSelfExplode()">💥 狼人自爆</button>
+                        <button class="btn btn-info btn-sm" onclick="showPoliceSetupModal()">🚔 上警设置</button>
                         <button class="btn btn-secondary btn-sm" onclick="showPhaseAdjustModal()">⚙️ 调整</button>
                     </div>
                 </div>

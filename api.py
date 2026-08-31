@@ -592,6 +592,95 @@ def set_player_actual_role(game_id, player_id):
     return ok(message="真实身份设置成功")
 
 
+@api.route('/games/<int:game_id>/players/<int:player_id>/status', methods=['PUT'])
+def update_player_status(game_id, player_id):
+    """更新玩家状态（上警、退水、死亡等）"""
+    data = request.get_json() or {}
+    # 检查玩家是否在对局中
+    existing = query_one(
+        f"SELECT * FROM game_players WHERE game_id={ph()} AND player_id={ph()}",
+        (game_id, player_id)
+    )
+    if not existing:
+        return fail("该玩家不在此对局中", 404)
+
+    updates = []
+    params = []
+
+    # 上警状态
+    if 'is_on_police' in data:
+        updates.append(f"is_on_police={ph()}")
+        params.append(bool(data['is_on_police']))
+        # 如果取消上警，同时取消退水状态
+        if not data['is_on_police']:
+            updates.append(f"is_retired={ph()}")
+            params.append(False)
+
+    # 退水状态
+    if 'is_retired' in data:
+        updates.append(f"is_retired={ph()}")
+        params.append(bool(data['is_retired']))
+
+    # 存活状态
+    if 'is_alive' in data:
+        updates.append(f"is_alive={ph()}")
+        params.append(bool(data['is_alive']))
+        # 如果死亡，设置死亡类型
+        if not data['is_alive'] and 'death_type' in data:
+            updates.append(f"death_type={ph()}")
+            params.append(data['death_type'])
+        # 如果复活，清除死亡类型
+        elif data['is_alive']:
+            updates.append(f"death_type=NULL")
+
+    # 死亡类型
+    if 'death_type' in data and 'is_alive' not in data:
+        updates.append(f"death_type={ph()}")
+        params.append(data['death_type'])
+
+    if not updates:
+        return fail("没有需要更新的字段")
+
+    params.extend([game_id, player_id])
+    sql = f"UPDATE game_players SET {', '.join(updates)} WHERE game_id={ph()} AND player_id={ph()}"
+    execute_write(sql, tuple(params))
+
+    # 返回更新后的玩家信息
+    updated = query_one(
+        f"""SELECT gp.*, p.name as player_name
+            FROM game_players gp
+            JOIN players p ON gp.player_id = p.id
+            WHERE gp.game_id={ph()} AND gp.player_id={ph()}""",
+        (game_id, player_id)
+    )
+    return ok(updated, "玩家状态更新成功")
+
+
+@api.route('/games/<int:game_id>/players/police', methods=['PUT'])
+def batch_update_police_status(game_id):
+    """批量更新上警状态（上警环节使用）"""
+    data = request.get_json() or {}
+    police_player_ids = data.get('police_player_ids', [])
+
+    if not isinstance(police_player_ids, list):
+        return fail("police_player_ids必须是数组")
+
+    # 先将所有玩家的上警和退水状态重置
+    execute_write(
+        f"UPDATE game_players SET is_on_police=FALSE, is_retired=FALSE WHERE game_id={ph()}",
+        (game_id,)
+    )
+
+    # 设置上警玩家
+    for player_id in police_player_ids:
+        execute_write(
+            f"UPDATE game_players SET is_on_police=TRUE WHERE game_id={ph()} AND player_id={ph()}",
+            (game_id, player_id)
+        )
+
+    return ok(message="上警状态批量更新成功")
+
+
 # ---- 对局状态流转 ----
 @api.route('/games/<int:game_id>/finish', methods=['POST'])
 def finish_game(game_id):

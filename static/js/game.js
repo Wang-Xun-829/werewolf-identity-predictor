@@ -193,9 +193,28 @@ function renderPlayerBookmarks() {
         const topCamp = p.all_probabilities && p.all_probabilities[0] ? p.all_probabilities[0].camp : '';
         const topRoleCls = getCampClass(topCamp);
         const canRemove = gameData && gameData.status === '进行中';
-        html += `<div class="player-bookmark ${isActive ? 'active' : ''}" onclick="selectPlayer(${p.player_id})">
+        // 获取玩家状态
+        const gp = gamePlayers.find(g => g.player_id === p.player_id);
+        const isAlive = gp ? gp.is_alive !== false : true;
+        const isOnPolice = gp ? gp.is_on_police : false;
+        const isRetired = gp ? gp.is_retired : false;
+        const deathType = gp ? gp.death_type : null;
+        // 状态标签
+        let statusBadges = '';
+        if (!isAlive) {
+            const deathLabel = deathType === 'night_death' ? '夜死' : '出局';
+            statusBadges += `<span class="badge badge-dead" title="已死亡">${deathLabel}</span>`;
+        }
+        if (isOnPolice && !isRetired) {
+            statusBadges += `<span class="badge badge-police" title="上警中">警</span>`;
+        }
+        if (isRetired) {
+            statusBadges += `<span class="badge badge-retired" title="已退水">退</span>`;
+        }
+        html += `<div class="player-bookmark ${isActive ? 'active' : ''} ${!isAlive ? 'dead' : ''}" onclick="selectPlayer(${p.player_id})" oncontextmenu="event.preventDefault(); showPlayerStatusMenu(${p.player_id}, event);">
             <span class="bookmark-name">${seatLabel}${escapeHtml(p.player_name)}</span>
-            <span style="display:flex;align-items:center;gap:6px;">
+            <span style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                ${statusBadges}
                 <span class="bookmark-role badge badge-${topRoleCls}">${escapeHtml(p.top_role_name || '-')}</span>
                 ${canRemove ? `<span class="bookmark-remove" onclick="event.stopPropagation(); removePlayerFromGame(${p.player_id}, '${escapeHtml(p.player_name)}')" title="移除玩家">✕</span>` : ''}
             </span>
@@ -1399,6 +1418,57 @@ async function loadCurrentPhase() {
         currentGamePhase = phase;  // 保存到全局变量
         document.getElementById('current-phase-display').textContent =
             '第' + phase.round + '轮 ' + phase.display;
+        // 显示投票权提示
+        showVotingRightsHint(phase.phase);
+    }
+}
+
+// 显示投票权提示
+function showVotingRightsHint(phase) {
+    // 移除已有的提示
+    const existingHint = document.getElementById('voting-rights-hint');
+    if (existingHint) existingHint.remove();
+
+    let hintText = '';
+    let hintColor = '';
+
+    if (phase === '警徽投票') {
+        // 计算可以投票的玩家（未上警的玩家）
+        const canVote = gamePlayers.filter(gp => !gp.is_on_police && gp.is_alive !== false);
+        const cannotVote = gamePlayers.filter(gp => gp.is_on_police && gp.is_alive !== false);
+        hintText = `🗳️ 警徽投票：只有未上警的玩家可以投票。当前可投票 ${canVote.length} 人，上警不可投票 ${cannotVote.length} 人。`;
+        hintColor = 'rgba(0, 240, 255, 0.1)';
+    } else if (phase === '放逐投票') {
+        // 计算可以投票的玩家（存活的玩家）
+        const canVote = gamePlayers.filter(gp => gp.is_alive !== false);
+        const cannotVote = gamePlayers.filter(gp => gp.is_alive === false);
+        hintText = `🚪 放逐投票：只有存活的玩家可以投票。当前可投票 ${canVote.length} 人，已出局 ${cannotVote.length} 人。`;
+        hintColor = 'rgba(239, 68, 68, 0.1)';
+    } else if (phase === 'PK发言') {
+        hintText = '⚔️ PK发言环节：平票后追加PK发言，PK台上的玩家不能投票。';
+        hintColor = 'rgba(251, 191, 36, 0.1)';
+    } else if (phase === '上警') {
+        hintText = '🚔 上警环节：请点击"上警设置"按钮，选择上警的玩家。上警玩家不能投警徽票。';
+        hintColor = 'rgba(168, 85, 247, 0.1)';
+    }
+
+    if (hintText) {
+        const flowControl = document.getElementById('game-flow-control');
+        if (flowControl) {
+            const hint = document.createElement('div');
+            hint.id = 'voting-rights-hint';
+            hint.style.cssText = `
+                margin-top: 12px;
+                padding: 10px 12px;
+                background: ${hintColor};
+                border-radius: 6px;
+                font-size: 13px;
+                color: var(--text-primary);
+                line-height: 1.5;
+            `;
+            hint.textContent = hintText;
+            flowControl.appendChild(hint);
+        }
     }
 }
 
@@ -2819,5 +2889,173 @@ async function submitGuardProtect() {
         await loadPredictions();
     } else {
         showToast('创建失败，请重试', 'error');
+    }
+}
+
+
+// ============================================================
+// 玩家状态管理（上警、退水、死亡等）
+// ============================================================
+
+// 显示玩家状态右键菜单
+function showPlayerStatusMenu(playerId, event) {
+    // 移除已有的菜单
+    const existingMenu = document.getElementById('player-status-context-menu');
+    if (existingMenu) existingMenu.remove();
+
+    const gp = gamePlayers.find(g => g.player_id === playerId);
+    if (!gp) return;
+
+    const menu = document.createElement('div');
+    menu.id = 'player-status-context-menu';
+    menu.style.cssText = `
+        position: fixed;
+        left: ${event.clientX}px;
+        top: ${event.clientY}px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 8px 0;
+        min-width: 180px;
+        z-index: 10000;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    `;
+
+    const playerName = gp.player_name || '玩家';
+    const isAlive = gp.is_alive !== false;
+    const isOnPolice = gp.is_on_police;
+    const isRetired = gp.is_retired;
+
+    let menuItems = `
+        <div style="padding: 8px 16px;font-weight:600;color:var(--neon-cyan);border-bottom:1px solid var(--border-color);margin-bottom:4px;">${escapeHtml(playerName)} - 状态设置</div>
+    `;
+
+    // 上警/取消上警
+    if (!isOnPolice) {
+        menuItems += `<div style="padding: 8px 16px;cursor:pointer;" onmouseover="this.style.background='rgba(0,240,255,0.1)'" onmouseout="this.style.background='transparent'" onclick="updatePlayerStatus(${playerId}, {is_on_police: true}); hidePlayerStatusMenu();">🚔 设为上警</div>`;
+    } else {
+        menuItems += `<div style="padding: 8px 16px;cursor:pointer;" onmouseover="this.style.background='rgba(0,240,255,0.1)'" onmouseout="this.style.background='transparent'" onclick="updatePlayerStatus(${playerId}, {is_on_police: false}); hidePlayerStatusMenu();">🚫 取消上警</div>`;
+    }
+
+    // 退水/取消退水（只有上警玩家才能退水）
+    if (isOnPolice && !isRetired) {
+        menuItems += `<div style="padding: 8px 16px;cursor:pointer;" onmouseover="this.style.background='rgba(0,240,255,0.1)'" onmouseout="this.style.background='transparent'" onclick="updatePlayerStatus(${playerId}, {is_retired: true}); hidePlayerStatusMenu();">↩️ 退水</div>`;
+    } else if (isRetired) {
+        menuItems += `<div style="padding: 8px 16px;cursor:pointer;" onmouseover="this.style.background='rgba(0,240,255,0.1)'" onmouseout="this.style.background='transparent'" onclick="updatePlayerStatus(${playerId}, {is_retired: false}); hidePlayerStatusMenu();">↩️ 取消退水</div>`;
+    }
+
+    menuItems += `<div style="border-top:1px solid var(--border-color);margin:4px 0;"></div>`;
+
+    // 死亡/复活
+    if (isAlive) {
+        menuItems += `<div style="padding: 8px 16px;cursor:pointer;" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='transparent'" onclick="updatePlayerStatus(${playerId}, {is_alive: false, death_type: 'night_death'}); hidePlayerStatusMenu();">💀 夜间死亡</div>`;
+        menuItems += `<div style="padding: 8px 16px;cursor:pointer;" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='transparent'" onclick="updatePlayerStatus(${playerId}, {is_alive: false, death_type: 'day_vote'}); hidePlayerStatusMenu();">🗳️ 白天放逐</div>`;
+    } else {
+        menuItems += `<div style="padding: 8px 16px;cursor:pointer;" onmouseover="this.style.background='rgba(34,197,94,0.1)'" onmouseout="this.style.background='transparent'" onclick="updatePlayerStatus(${playerId}, {is_alive: true}); hidePlayerStatusMenu();">✨ 复活</div>`;
+    }
+
+    menuItems += `<div style="border-top:1px solid var(--border-color);margin:4px 0;"></div>`;
+    menuItems += `<div style="padding: 8px 16px;cursor:pointer;color:#94a3b8;" onmouseover="this.style.background='rgba(0,240,255,0.1)'" onmouseout="this.style.background='transparent'" onclick="hidePlayerStatusMenu();">取消</div>`;
+
+    menu.innerHTML = menuItems;
+    document.body.appendChild(menu);
+
+    // 点击其他地方关闭菜单
+    setTimeout(() => {
+        document.addEventListener('click', hidePlayerStatusMenu, { once: true });
+    }, 10);
+}
+
+// 隐藏玩家状态菜单
+function hidePlayerStatusMenu() {
+    const menu = document.getElementById('player-status-context-menu');
+    if (menu) menu.remove();
+}
+
+// 更新玩家状态
+async function updatePlayerStatus(playerId, statusData) {
+    try {
+        const result = await api('PUT', `/games/${gameId}/players/${playerId}/status`, statusData);
+        if (result && result.success) {
+            // 更新本地gamePlayers数据
+            const index = gamePlayers.findIndex(gp => gp.player_id === playerId);
+            if (index !== -1 && result.data) {
+                gamePlayers[index] = { ...gamePlayers[index], ...result.data };
+            }
+            // 重新渲染玩家书签
+            renderPlayerBookmarks();
+            // 如果当前选中的是这个玩家，重新渲染预测结果
+            if (selectedPlayerId === playerId) {
+                renderSelectedPlayerPrediction();
+            }
+            showToast('玩家状态已更新', 'success');
+        }
+    } catch (error) {
+        showToast('更新玩家状态失败: ' + error.message, 'error');
+    }
+}
+
+// 显示上警设置模态框
+function showPoliceSetupModal() {
+    const modal = document.getElementById('police-setup-modal');
+    if (!modal) {
+        // 动态创建模态框
+        const modalHtml = `
+        <div class="modal-overlay" id="police-setup-modal">
+            <div class="modal" style="max-width:500px;">
+                <div class="modal-title">上警设置</div>
+                <p style="font-size:13px;color:#94a3b8;margin-bottom:16px;">请选择上警的玩家（警上玩家不能投警徽票）</p>
+                <div id="police-setup-list" style="max-height:300px;overflow-y:auto;margin-bottom:16px;"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="hideModal('police-setup-modal')">取消</button>
+                    <button class="btn btn-primary" onclick="savePoliceSetup()">保存</button>
+                </div>
+            </div>
+        </div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
+    // 渲染玩家列表
+    const list = document.getElementById('police-setup-list');
+    let html = '';
+    const sortedPlayers = [...gamePlayers].sort((a, b) => {
+        const seatA = a.seat_number;
+        const seatB = b.seat_number;
+        if (!seatA && !seatB) return 0;
+        if (!seatA) return 1;
+        if (!seatB) return -1;
+        return seatA - seatB;
+    });
+
+    sortedPlayers.forEach(gp => {
+        const isAlive = gp.is_alive !== false;
+        const isChecked = gp.is_on_police;
+        const seatLabel = gp.seat_number ? `${gp.seat_number}号 ` : '';
+        html += `<label style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);${!isAlive ? 'opacity:0.5;' : ''}">
+            <input type="checkbox" value="${gp.player_id}" ${isChecked ? 'checked' : ''} ${!isAlive ? 'disabled' : ''}>
+            <span>${seatLabel}${escapeHtml(gp.player_name)}</span>
+            ${!isAlive ? '<span style="color:#ef4444;font-size:12px;">(已死亡)</span>' : ''}
+        </label>`;
+    });
+    list.innerHTML = html;
+
+    showModal('police-setup-modal');
+}
+
+// 保存上警设置
+async function savePoliceSetup() {
+    const checkboxes = document.querySelectorAll('#police-setup-list input[type="checkbox"]:checked');
+    const policePlayerIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    try {
+        const result = await api('PUT', `/games/${gameId}/players/police`, { police_player_ids: policePlayerIds });
+        if (result && result.success) {
+            // 重新加载游戏数据
+            await loadGame();
+            hideModal('police-setup-modal');
+            showToast('上警设置已保存', 'success');
+        }
+    } catch (error) {
+        showToast('保存上警设置失败: ' + error.message, 'error');
     }
 }

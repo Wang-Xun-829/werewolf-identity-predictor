@@ -1,4 +1,4 @@
--- ============================================================
+﻿-- ============================================================
 -- 狼人杀身份预测程序 - 数据库表结构
 -- 适用于 PostgreSQL (Neon)
 -- 本地开发使用 SQLite，由 db.py 自动转换语法
@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS game_players (
     player_id      INTEGER NOT NULL REFERENCES players(id),
     seat_number    INTEGER,                       -- 座位号
     actual_role_id INTEGER REFERENCES roles(id),  -- 真实身份（对局结束后补全）
+    is_on_police   BOOLEAN DEFAULT FALSE,         -- 是否上警
+    is_retired     BOOLEAN DEFAULT FALSE,         -- 是否退水（上警后退水）
+    is_alive       BOOLEAN DEFAULT TRUE,          -- 是否存活
+    death_type     VARCHAR(20),                   -- 死亡类型：night_death/day_vote
     UNIQUE(game_id, player_id)
 );
 

@@ -25,6 +25,7 @@ from db import query_one, execute_write, ph
 # ============================================================
 # 每一轮的标准阶段顺序（第一天，没有夜间行动）
 PHASE_FLOW_DAY1 = [
+    '上警',          # 白天：玩家选择是否上警
     '警上发言',      # 白天：竞选警长发言
     '警徽投票',      # 白天：投票选警长
     '死讯公布',      # 白天：法官宣布昨夜死讯
@@ -44,6 +45,7 @@ PHASE_FLOW_NORMAL = [
 # 阶段显示名称映射
 PHASE_DISPLAY = {
     '夜间行动': '🌙 夜间行动',
+    '上警': '🚔 上警',
     '警上发言': '🎤 警上发言',
     '警徽投票': '🗳️ 警徽投票',
     '死讯公布': '💀 死讯公布',
@@ -57,6 +59,7 @@ PHASE_DISPLAY = {
 # 阶段属于白天还是黑夜
 PHASE_TIME = {
     '夜间行动': '黑夜',
+    '上警': '白天',
     '警上发言': '白天',
     '警徽投票': '白天',
     '死讯公布': '白天',
@@ -80,7 +83,7 @@ def _get_game_state(game_id):
     if not game:
         return None
     return {
-        'phase': game['current_phase'] or '警上发言',
+        'phase': game['current_phase'] or '上警',
         'round': game['current_round'] or 1,
         'sheriff_interrupted': game['sheriff_interrupted'] or 0,
     }
@@ -263,8 +266,8 @@ def set_phase(game_id, phase, round_number=None):
 
 
 def init_game_phase(game_id):
-    """初始化新对局的阶段（第一天从警上发言开始，夜间行动不需要记录）"""
+    """初始化新对局的阶段（第一天从上警环节开始，夜间行动不需要记录）"""
     execute_write(
         f"UPDATE games SET current_phase = {ph()}, current_round = 1, sheriff_interrupted = 0 WHERE id = {ph()}",
-        ('警上发言', game_id)
+        ('上警', game_id)
     )
