@@ -2450,18 +2450,66 @@ function renderVoteBatchList() {
     const list = document.getElementById('vote-batch-list');
     if (!list) return;
 
+    const voteType = document.getElementById('vote-batch-type').value;
+    
+    // 根据投票类型过滤可以投票的玩家
+    let voters = gamePlayers;
+    let hintText = '';
+    
+    if (voteType === 'sheriff') {
+        // 投警徽票：只有未上警且存活的玩家可以投票
+        voters = gamePlayers.filter(p => !p.is_on_police && p.is_alive !== false);
+        const cannotVote = gamePlayers.filter(p => p.is_on_police && p.is_alive !== false);
+        hintText = `🗳️ 警徽投票：只有未上警的玩家可以投票。当前可投票 ${voters.length} 人，上警不可投票 ${cannotVote.length} 人。`;
+    } else if (voteType === 'banish') {
+        // 投放逐票：只有存活的玩家可以投票
+        voters = gamePlayers.filter(p => p.is_alive !== false);
+        const cannotVote = gamePlayers.filter(p => p.is_alive === false);
+        hintText = `🚪 放逐投票：只有存活的玩家可以投票。当前可投票 ${voters.length} 人，已出局 ${cannotVote.length} 人。`;
+    }
+
     const targetOptions = '<option value="">弃票</option>' + 
         gamePlayers.map(p => `<option value="${p.player_id}">${escapeHtml(p.player_name)}</option>`).join('');
 
     let html = '';
-    gamePlayers.forEach(function(p, index) {
+    
+    // 显示投票权提示
+    if (hintText) {
+        html += '<div style="margin-bottom:12px;padding:10px 12px;background:rgba(0,240,255,0.08);border-radius:6px;font-size:13px;color:var(--text-primary);line-height:1.5;">' + hintText + '</div>';
+    }
+    
+    voters.forEach(function(p, index) {
         html += '<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);">';
         html += '<div style="min-width:100px;font-weight:500;">' + (index + 1) + '. ' + escapeHtml(p.player_name) + '</div>';
         html += '<select class="form-control vote-batch-target" data-player-id="' + p.player_id + '" style="flex:1;">' + targetOptions + '</select>';
         html += '</div>';
     });
+    
+    // 显示不可投票的玩家
+    const cannotVotePlayers = gamePlayers.filter(p => !voters.includes(p));
+    if (cannotVotePlayers.length > 0) {
+        html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.1);">';
+        html += '<div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">以下玩家无投票权：</div>';
+        cannotVotePlayers.forEach(function(p) {
+            let reason = '';
+            if (p.is_alive === false) {
+                reason = '已出局';
+            } else if (p.is_on_police) {
+                reason = '上警';
+            }
+            html += '<div style="display:inline-block;margin:4px 8px 4px 0;padding:4px 10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:4px;font-size:12px;color:#ef4444;">';
+            html += escapeHtml(p.player_name) + ' (' + reason + ')';
+            html += '</div>';
+        });
+        html += '</div>';
+    }
 
     list.innerHTML = html;
+}
+
+// 投票类型改变时更新预览
+function updateVoteBatchPreview() {
+    renderVoteBatchList();
 }
 
 function clearAllVotes() {
