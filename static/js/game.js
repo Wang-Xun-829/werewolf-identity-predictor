@@ -1,4 +1,4 @@
-// 对局详情页
+﻿// 对局详情页
 
 const gameId = document.getElementById('game-id').value;
 let gameData = null;
@@ -495,7 +495,7 @@ function filterAddPlayerList() {
         renderAddPlayerList(allPlayers, addedIds);
         return;
     }
-    const filtered = allPlayers.filter(p => p.name.toLowerCase().includes(keyword));
+    const filtered = allPlayers.filter(p => matchByPinyin(p.name, keyword));
     renderAddPlayerList(filtered, addedIds);
 }
 

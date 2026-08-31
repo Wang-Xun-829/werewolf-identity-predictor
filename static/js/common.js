@@ -1,4 +1,4 @@
-// 通用工具函数
+﻿// 通用工具函数
 
 const API_BASE = '/api';
 
@@ -173,7 +173,7 @@ function initSearchableSelect(selectId, placeholder = '搜索...') {
             const text = opt.textContent;
             const value = opt.value;
             // 空值选项也显示（如"无目标"），但搜索时不匹配空值
-            if (filter && value && !text.toLowerCase().includes(filter.toLowerCase())) return;
+            if (filter && value && !matchByPinyin(text, filter)) return;
             if (filter && !value) return; // 搜索时隐藏空值选项
             hasVisible = true;
             const item = document.createElement('div');
@@ -248,4 +248,81 @@ function initSearchableSelect(selectId, placeholder = '搜索...') {
     }
 
     return { select, wrapper, display, dropdown, renderOptions };
+}
+
+
+// ============================================================
+// 拼音搜索辅助函数
+// ============================================================
+
+/**
+ * 获取中文文本的拼音全拼（不带声调）
+ * @param {string} text - 中文文本
+ * @returns {string} 拼音全拼，如 "wang xun"
+ */
+function getPinyinFull(text) {
+    if (!text) return '';
+    try {
+        if (typeof pinyin !== 'undefined') {
+            return pinyin(text, { toneType: 'none', type: 'string' }).toLowerCase();
+        }
+    } catch (e) {
+        // pinyin库未加载时返回空
+    }
+    return '';
+}
+
+/**
+ * 获取中文文本的拼音首字母
+ * @param {string} text - 中文文本
+ * @returns {string} 拼音首字母，如 "w x"
+ */
+function getPinyinInitials(text) {
+    if (!text) return '';
+    try {
+        if (typeof pinyin !== 'undefined') {
+            return pinyin(text, { pattern: 'first', toneType: 'none', type: 'string' }).toLowerCase();
+        }
+    } catch (e) {
+        // pinyin库未加载时返回空
+    }
+    return '';
+}
+
+/**
+ * 检查文本是否匹配关键词（支持中文、拼音全拼、拼音首字母）
+ * @param {string} text - 要检查的文本（如玩家名称）
+ * @param {string} keyword - 搜索关键词
+ * @returns {boolean} 是否匹配
+ */
+function matchByPinyin(text, keyword) {
+    if (!text || !keyword) return false;
+    
+    const textLower = text.toLowerCase();
+    const keywordLower = keyword.toLowerCase().trim();
+    
+    if (!keywordLower) return true;
+    
+    // 1. 中文直接包含匹配
+    if (textLower.includes(keywordLower)) return true;
+    
+    // 2. 拼音全拼匹配（支持带空格和不带空格）
+    const pinyinFull = getPinyinFull(text);
+    if (pinyinFull) {
+        const pinyinFullNoSpace = pinyinFull.replace(/\s+/g, '');
+        if (pinyinFull.includes(keywordLower) || pinyinFullNoSpace.includes(keywordLower)) {
+            return true;
+        }
+    }
+    
+    // 3. 拼音首字母匹配（支持带空格和不带空格）
+    const pinyinInitials = getPinyinInitials(text);
+    if (pinyinInitials) {
+        const pinyinInitialsNoSpace = pinyinInitials.replace(/\s+/g, '');
+        if (pinyinInitials.includes(keywordLower) || pinyinInitialsNoSpace.includes(keywordLower)) {
+            return true;
+        }
+    }
+    
+    return false;
 }
