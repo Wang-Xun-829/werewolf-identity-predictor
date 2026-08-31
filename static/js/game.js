@@ -2545,6 +2545,10 @@ async function submitVoteBatch() {
 
     const selects = document.querySelectorAll('.vote-batch-target');
     let createdCount = 0;
+    
+    // 统计投票结果
+    const voteCounts = {};  // target_id -> count
+    const voteDetails = [];  // 记录每条投票
 
     for (let i = 0; i < selects.length; i++) {
         const select = selects[i];
@@ -2560,7 +2564,12 @@ async function submitVoteBatch() {
                 phase: phase,
                 result_status: 'unknown'
             });
-            if (result) createdCount++;
+            if (result) {
+                createdCount++;
+                const tid = parseInt(targetId);
+                voteCounts[tid] = (voteCounts[tid] || 0) + 1;
+                voteDetails.push({ actor_id: actorId, target_id: tid });
+            }
         } else if (abandonActionId) {
             const result = await api('POST', '/games/' + gameId + '/behaviors', {
                 actor_id: actorId,
@@ -2577,6 +2586,64 @@ async function submitVoteBatch() {
     hideModal('vote-batch-modal');
     await loadBehaviors();
     await loadPredictions();
+    
+    // 自动计算投票结果
+    if (Object.keys(voteCounts).length > 0) {
+        await calculateVoteResult(voteCounts, voteType, round);
+    }
+}
+
+// 计算投票结果并自动处理
+async function calculateVoteResult(voteCounts, voteType, round) {
+    // 找出最高票数
+    const maxVotes = Math.max(...Object.values(voteCounts));
+    // 找出得票最多的玩家（可能多个）
+    const topPlayers = Object.entries(voteCounts)
+        .filter(([id, count]) => count === maxVotes)
+        .map(([id, count]) => ({ player_id: parseInt(id), votes: count }));
+    
+    // 获取玩家名称
+    const playerNames = topPlayers.map(p => {
+        const gp = gamePlayers.find(g => g.player_id === p.player_id);
+        return gp ? gp.player_name : '玩家' + p.player_id;
+    });
+    
+    if (voteType === 'sheriff') {
+        // 警徽投票
+        if (topPlayers.length === 1) {
+            // 只有一个人得票最多，成为警长
+            const playerName = playerNames[0];
+            showToast(`🎉 ${playerName} 以 ${maxVotes} 票当选警长！`, 'success');
+        } else {
+            // 多人平票，进入PK
+            showToast(`⚠️ 警徽投票平票：${playerNames.join('、')} 各 ${maxVotes} 票，进入PK环节！`, 'warning');
+        }
+    } else if (voteType === 'banish') {
+        // 放逐投票
+        if (topPlayers.length === 1) {
+            // 只有一个人得票最多，被放逐
+            const playerId = topPlayers[0].player_id;
+            const playerName = playerNames[0];
+            
+            // 确认是否自动标记出局
+            if (confirm(`${playerName} 以 ${maxVotes} 票被放逐，是否自动标记为已出局？`)) {
+                try {
+                    await api('PUT', `/games/${gameId}/players/${playerId}/status`, {
+                        is_alive: false,
+                        death_type: 'day_vote'
+                    });
+                    showToast(`✅ ${playerName} 已被标记为白天放逐`, 'success');
+                    // 重新加载游戏数据
+                    await loadGame();
+                } catch (error) {
+                    showToast('标记出局失败: ' + error.message, 'error');
+                }
+            }
+        } else {
+            // 多人平票，进入PK
+            showToast(`⚠️ 放逐投票平票：${playerNames.join('、')} 各 ${maxVotes} 票，进入PK环节！`, 'warning');
+        }
+    }
 }
 
 // ============================================================
