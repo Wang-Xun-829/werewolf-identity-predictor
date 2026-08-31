@@ -3039,7 +3039,7 @@ function showPoliceSetupModal() {
     });
     list.innerHTML = html;
 
-    showModal('police-setup-modal');
+    document.getElementById('police-setup-modal').classList.add('show');
 }
 
 // 保存上警设置
