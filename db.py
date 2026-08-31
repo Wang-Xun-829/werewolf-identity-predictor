@@ -292,6 +292,12 @@ def query_all(sql, params=()):
     """查询多行，返回字典列表"""
     conn = get_db()
     cur = conn.cursor()
+    # 确保SQL字符串是正确的UTF-8编码
+    if isinstance(sql, str):
+        sql = sql.encode('utf-8').decode('utf-8')
+    # 确保参数都是正确的UTF-8编码
+    if params:
+        params = tuple(p.encode('utf-8').decode('utf-8') if isinstance(p, str) else p for p in params)
     cur.execute(sql, params)
     rows = cur.fetchall()
     conn.close()
@@ -302,6 +308,12 @@ def query_one(sql, params=()):
     """查询单行，返回字典或 None"""
     conn = get_db()
     cur = conn.cursor()
+    # 确保SQL字符串是正确的UTF-8编码
+    if isinstance(sql, str):
+        sql = sql.encode('utf-8').decode('utf-8')
+    # 确保参数都是正确的UTF-8编码
+    if params:
+        params = tuple(p.encode('utf-8').decode('utf-8') if isinstance(p, str) else p for p in params)
     cur.execute(sql, params)
     row = cur.fetchone()
     conn.close()
@@ -312,6 +324,12 @@ def execute_write(sql, params=()):
     """执行 INSERT/UPDATE/DELETE，返回新插入的 ID（仅 INSERT）"""
     conn = get_db()
     cur = conn.cursor()
+    # 确保SQL字符串是正确的UTF-8编码
+    if isinstance(sql, str):
+        sql = sql.encode('utf-8').decode('utf-8')
+    # 确保参数都是正确的UTF-8编码
+    if params:
+        params = tuple(p.encode('utf-8').decode('utf-8') if isinstance(p, str) else p for p in params)
     new_id = None
     if DB_TYPE == 'postgresql' and sql.strip().upper().startswith('INSERT'):
         if 'RETURNING' not in sql.upper():
