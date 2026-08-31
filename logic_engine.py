@@ -64,11 +64,9 @@ def apply_self_explode_rule(game_id, confirmed, results):
         "SELECT id FROM actions WHERE action_type = 'identity_confirm' AND determine_content = 'actor_werewolf'"
     )
     if not explode_actions:
-        # 尝试按名称查找（使用参数化查询避免中文编码问题）
-        explode_actions = query_all(
-            "SELECT id FROM actions WHERE name LIKE " + ph(),
-            ('%自爆%',)
-        )
+        # 先查询所有actions，再在Python中过滤（避免psycopg3中文编码问题）
+        all_actions = query_all("SELECT id, name FROM actions")
+        explode_actions = [a for a in all_actions if '自爆' in a['name']]
     
     if not explode_actions:
         return results
@@ -130,20 +128,14 @@ def apply_check_chain_rule(game_id, confirmed, results):
             "SELECT id, determine_content FROM actions WHERE action_type = 'check_result'"
         )
         if not check_actions:
-            # 使用参数化查询避免中文编码问题，分别查询金水和查杀
-            gold_water_actions = query_all(
-                "SELECT id FROM actions WHERE name LIKE " + ph(),
-                ('%金水%',)
-            )
-            kill_check_actions = query_all(
-                "SELECT id FROM actions WHERE name LIKE " + ph(),
-                ('%查杀%',)
-            )
+            # 先查询所有actions，再在Python中过滤（避免psycopg3中文编码问题）
+            all_actions = query_all("SELECT id, name FROM actions")
             check_actions = []
-            for a in gold_water_actions:
-                check_actions.append({'id': a['id'], 'determine_content': 'target_good'})
-            for a in kill_check_actions:
-                check_actions.append({'id': a['id'], 'determine_content': 'target_werewolf'})
+            for a in all_actions:
+                if '金水' in a['name']:
+                    check_actions.append({'id': a['id'], 'determine_content': 'target_good'})
+                elif '查杀' in a['name']:
+                    check_actions.append({'id': a['id'], 'determine_content': 'target_werewolf'})
         
         for action in check_actions:
             action_id = action['id']
@@ -208,11 +200,9 @@ def apply_counter_claim_rule(game_id, confirmed, results):
         "SELECT id, name FROM actions WHERE action_type = 'identity_conflict'"
     )
     if not counter_actions:
-        # 使用参数化查询避免中文编码问题
-        counter_actions = query_all(
-            "SELECT id, name FROM actions WHERE name LIKE " + ph(),
-            ('%对跳%',)
-        )
+        # 先查询所有actions，再在Python中过滤（避免psycopg3中文编码问题）
+        all_actions = query_all("SELECT id, name FROM actions")
+        counter_actions = [a for a in all_actions if '对跳' in a['name']]
     
     for action in counter_actions:
         action_id = action['id']
@@ -339,17 +329,13 @@ def apply_side_correction_rule(game_id, confirmed, results):
     如果A站边B（预言家），B被确认为真预言家 → A站对边
     如果A站边B（预言家），B被确认为狼人 → A站错边
     """
-    # 获取所有站边行为（使用参数化查询避免中文编码问题）
-    side_actions = query_all(
-        "SELECT id, name FROM actions WHERE name LIKE " + ph() + " AND has_result_status = TRUE",
-        ('%站边%',)
-    )
-    if not side_actions:
-        # 使用参数化查询避免中文编码问题
-        side_actions = query_all(
-            "SELECT id, name FROM actions WHERE name LIKE " + ph(),
-            ('%站边%',)
-        )
+    # 先查询所有actions，再在Python中过滤（避免psycopg3中文编码问题）
+    all_actions = query_all("SELECT id, name, has_result_status FROM actions")
+    side_actions = [a for a in all_actions if '站边' in a['name']]
+    # 优先使用有has_result_status的
+    side_actions_with_status = [a for a in side_actions if a.get('has_result_status')]
+    if side_actions_with_status:
+        side_actions = side_actions_with_status
     
     for action in side_actions:
         action_id = action['id']
@@ -413,11 +399,9 @@ def apply_vote_correction_rule(game_id, confirmed, results):
         "SELECT id, name FROM actions WHERE action_type = 'vote_action' AND has_result_status = TRUE"
     )
     if not vote_actions:
-        # 使用参数化查询避免中文编码问题
-        vote_actions = query_all(
-            "SELECT id, name FROM actions WHERE name LIKE " + ph() + " AND parent_id IS NOT NULL",
-            ('%票%',)
-        )
+        # 先查询所有actions，再在Python中过滤（避免psycopg3中文编码问题）
+        all_actions = query_all("SELECT id, name, parent_id FROM actions")
+        vote_actions = [a for a in all_actions if '票' in a['name'] and a.get('parent_id') is not None]
     
     for action in vote_actions:
         action_id = action['id']
