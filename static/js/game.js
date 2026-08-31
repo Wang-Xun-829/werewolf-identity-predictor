@@ -17,6 +17,9 @@ let editingScenarioId = null;  // 当前在模态框中编辑的情景ID
 // 当前游戏阶段信息
 let currentGamePhase = null;  // {phase, round, display, time}
 
+// 添加玩家模态框的临时勾选状态（搜索过滤时保留）
+let tempSelectedPlayers = {};  // { playerId: { checked: true, seat_number: 1 } }
+
 // 通用模态框函数
 
 // 折叠/展开区域
@@ -455,12 +458,35 @@ function showAddPlayerModal() {
         return;
     }
 
+    // 初始化临时勾选状态
+    tempSelectedPlayers = {};
     // 清空搜索框
     document.getElementById('add-player-search').value = '';
     // 渲染玩家列表
     renderAddPlayerList(allPlayers, addedIds);
     updateSelectedCount();
     document.getElementById('add-player-modal').classList.add('show');
+}
+
+// 保存当前DOM中的临时勾选状态（搜索过滤前调用）
+function saveTempSelectedState() {
+    const checkboxes = document.querySelectorAll('#add-player-list input[type="checkbox"]:not(:disabled)');
+    checkboxes.forEach(cb => {
+        const playerId = parseInt(cb.value);
+        if (!tempSelectedPlayers[playerId]) {
+            tempSelectedPlayers[playerId] = { checked: false, seat_number: null };
+        }
+        tempSelectedPlayers[playerId].checked = cb.checked;
+    });
+    // 保存座位号
+    const seatInputs = document.querySelectorAll('#add-player-list .seat-number-input');
+    seatInputs.forEach(input => {
+        const playerId = parseInt(input.dataset.playerId);
+        if (!tempSelectedPlayers[playerId]) {
+            tempSelectedPlayers[playerId] = { checked: false, seat_number: null };
+        }
+        tempSelectedPlayers[playerId].seat_number = input.value ? parseInt(input.value) : null;
+    });
 }
 
 // 渲染玩家列表（可过滤）
@@ -473,13 +499,22 @@ function renderAddPlayerList(players, addedIds) {
     let html = '';
     players.forEach(p => {
         const inGame = addedIds.has(p.id);
-        // 获取已在对局玩家的座位号
-        const existingSeat = inGame ? gamePlayers.find(gp => gp.player_id === p.id)?.seat_number : '';
+        // 获取临时勾选状态
+        const tempState = tempSelectedPlayers[p.id];
+        const isChecked = inGame ? true : (tempState && tempState.checked);
+        // 获取座位号：优先使用临时状态，其次使用已在对局的座位号
+        let seatValue = '';
+        if (tempState && tempState.seat_number) {
+            seatValue = tempState.seat_number;
+        } else if (inGame) {
+            const existingSeat = gamePlayers.find(gp => gp.player_id === p.id)?.seat_number;
+            seatValue = existingSeat || '';
+        }
         html += `<label style="display:flex;align-items:center;gap:8px;">
-            <input type="checkbox" value="${p.id}" ${inGame ? 'checked disabled' : ''} onchange="updateSelectedCount()">
+            <input type="checkbox" value="${p.id}" ${inGame ? 'checked disabled' : (isChecked ? 'checked' : '')} onchange="updateSelectedCount()">
             <span>${escapeHtml(p.name)}</span>
             <input type="number" class="seat-number-input" data-player-id="${p.id}" 
-                value="${existingSeat || ''}" placeholder="座号" min="1" 
+                value="${seatValue}" placeholder="座号" min="1" 
                 style="width:60px;margin-left:auto;padding:4px 8px;font-size:13px;border:1px solid var(--border-color);border-radius:4px;background:var(--input-bg);color:var(--text-primary);">
             ${inGame ? '<span class="player-in-game">已在对局</span>' : ''}
         </label>`;
@@ -489,14 +524,18 @@ function renderAddPlayerList(players, addedIds) {
 
 // 搜索过滤玩家列表
 function filterAddPlayerList() {
+    // 搜索前先保存当前勾选状态
+    saveTempSelectedState();
     const keyword = document.getElementById('add-player-search').value.trim().toLowerCase();
     const addedIds = new Set(gamePlayers.map(gp => gp.player_id));
     if (!keyword) {
         renderAddPlayerList(allPlayers, addedIds);
+        updateSelectedCount();
         return;
     }
     const filtered = allPlayers.filter(p => matchByPinyin(p.name, keyword));
     renderAddPlayerList(filtered, addedIds);
+    updateSelectedCount();
 }
 
 // 全选/全不选
@@ -514,17 +553,20 @@ function updateSelectedCount() {
 
 // 批量添加玩家到对局
 async function addPlayerToGame() {
-    const checked = document.querySelectorAll('#add-player-list input[type="checkbox"]:checked:not(:disabled)');
-    if (checked.length === 0) {
-        showToast('请至少选择一名玩家', 'error');
-        return;
+    // 最后保存一次状态
+    saveTempSelectedState();
+    // 从临时状态中获取所有勾选的玩家
+    const addedIds = new Set(gamePlayers.map(gp => gp.player_id));
+    const toAdd = [];
+    for (const playerIdStr in tempSelectedPlayers) {
+        const playerId = parseInt(playerIdStr);
+        if (tempSelectedPlayers[playerId].checked && !addedIds.has(playerId)) {
+            toAdd.push(playerId);
+        }
     }
 
-    const addedIds = new Set(gamePlayers.map(gp => gp.player_id));
-    const toAdd = Array.from(checked).map(cb => parseInt(cb.value)).filter(id => !addedIds.has(id));
-
     if (toAdd.length === 0) {
-        showToast('选中的玩家都已在对局中', 'info');
+        showToast('请至少选择一名玩家', 'error');
         return;
     }
 
@@ -533,9 +575,8 @@ async function addPlayerToGame() {
 
     for (let i = 0; i < toAdd.length; i++) {
         const playerId = toAdd[i];
-        // 获取该玩家的座位号输入
-        const seatInput = document.querySelector(`.seat-number-input[data-player-id="${playerId}"]`);
-        const seatNumber = seatInput && seatInput.value ? parseInt(seatInput.value) : null;
+        // 从临时状态中获取座位号
+        const seatNumber = tempSelectedPlayers[playerId]?.seat_number || null;
         const data = { player_id: playerId };
         if (seatNumber) data.seat_number = seatNumber;
         const result = await api('POST', `/games/${gameId}/players`, data);
