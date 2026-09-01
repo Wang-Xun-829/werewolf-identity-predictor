@@ -11,6 +11,8 @@ from prophet_inference import get_prophet_claims
 from logic_analysis import analyze_game_logic
 from explanation import get_player_prediction_explanation
 from ml_model import get_ml_model_status, train_all_models, ml_predict, extract_features, get_all_features
+import threading
+import gradient_learning
 
 api = Blueprint('api', __name__, url_prefix='/api')
 
@@ -727,6 +729,24 @@ def confirm_game(game_id):
     except Exception as e:
         print(f"更新个性化行为统计失败: {e}")
         personalized_updated = 0
+    
+    # 梯度下降迭代学习（后台异步运行，不阻塞响应）
+    gradient_learning_started = False
+    try:
+        def run_gradient_learning_async():
+            try:
+                print(f"[梯度学习] 开始后台运行，对局ID: {game_id}")
+                gradient_learning.run_gradient_learning(game_id)
+                print(f"[梯度学习] 后台运行完成，对局ID: {game_id}")
+            except Exception as e:
+                print(f"[梯度学习] 后台运行失败: {e}")
+        
+        thread = threading.Thread(target=run_gradient_learning_async, daemon=True)
+        thread.start()
+        gradient_learning_started = True
+    except Exception as e:
+        print(f"启动梯度学习线程失败: {e}")
+        gradient_learning_started = False
     # 确认所有行为记录
     execute_write(
         f"UPDATE behavior_records SET is_verified=TRUE WHERE game_id={ph()}",
@@ -740,8 +760,9 @@ def confirm_game(game_id):
     return ok({
         "score": score_result,
         "weights_updated": updated_count,
-        "personalized_stats_updated": personalized_updated
-    }, "对局结果已确认，预测已打分，算法权重已更新，个性化行为统计已更新")
+        "personalized_stats_updated": personalized_updated,
+        "gradient_learning_started": gradient_learning_started
+    }, "对局结果已确认，预测已打分，算法权重已更新，个性化行为统计已更新，梯度下降学习已在后台启动")
 
 
 # ============================================================
@@ -1799,3 +1820,109 @@ def backfill_personalized_stats():
         print(f"[重新学习] 发生错误: {e}")
         print(f"[重新学习] 错误堆栈: {traceback.format_exc()}")
         return fail(f"重新学习失败: {str(e)}", 500)
+
+
+
+# ============================================================
+# 12. 梯度下降迭代学习
+# ============================================================
+@api.route('/gradient_learning/run', methods=['POST'])
+def run_gradient_learning_api():
+    """手动触发梯度下降迭代学习"""
+    try:
+        data = request.get_json() or {}
+        game_id = data.get('game_id')
+        
+        # 在后台线程中运行
+        def run_async():
+            try:
+                print(f"[梯度学习] 手动触发，对局ID: {game_id}")
+                gradient_learning.run_gradient_learning(game_id)
+                print(f"[梯度学习] 手动触发完成，对局ID: {game_id}")
+            except Exception as e:
+                print(f"[梯度学习] 手动触发失败: {e}")
+        
+        thread = threading.Thread(target=run_async, daemon=True)
+        thread.start()
+        
+        return ok({
+            'message': '梯度下降学习已在后台启动',
+            'game_id': game_id
+        })
+    except Exception as e:
+        import traceback
+        print(f"[梯度学习] 触发失败: {e}")
+        print(f"[梯度学习] 错误堆栈: {traceback.format_exc()}")
+        return fail(f"触发失败: {str(e)}", 500)
+
+
+@api.route('/gradient_learning/history', methods=['GET'])
+def get_gradient_learning_history():
+    """获取梯度下降学习历史"""
+    try:
+        limit = request.args.get('limit', 10, type=int)
+        history = gradient_learning.get_learning_history(limit)
+        return ok({
+            'history': history,
+            'count': len(history)
+        })
+    except Exception as e:
+        import traceback
+        print(f"[梯度学习] 获取历史失败: {e}")
+        print(f"[梯度学习] 错误堆栈: {traceback.format_exc()}")
+        return fail(f"获取历史失败: {str(e)}", 500)
+
+
+@api.route('/gradient_learning/backups', methods=['GET'])
+def get_weight_backups():
+    """获取权重备份列表"""
+    try:
+        limit = request.args.get('limit', 10, type=int)
+        backups = gradient_learning.get_weight_backups(limit)
+        return ok({
+            'backups': backups,
+            'count': len(backups)
+        })
+    except Exception as e:
+        import traceback
+        print(f"[梯度学习] 获取备份失败: {e}")
+        print(f"[梯度学习] 错误堆栈: {traceback.format_exc()}")
+        return fail(f"获取备份失败: {str(e)}", 500)
+
+
+@api.route('/gradient_learning/restore/<int:backup_id>', methods=['POST'])
+def restore_weights(backup_id):
+    """从备份恢复权重"""
+    try:
+        success = gradient_learning.restore_weights(backup_id)
+        if success:
+            return ok({
+                'message': '权重已恢复',
+                'backup_id': backup_id
+            })
+        else:
+            return fail('备份不存在或恢复失败', 404)
+    except Exception as e:
+        import traceback
+        print(f"[梯度学习] 恢复权重失败: {e}")
+        print(f"[梯度学习] 错误堆栈: {traceback.format_exc()}")
+        return fail(f"恢复失败: {str(e)}", 500)
+
+
+@api.route('/gradient_learning/current_score', methods=['GET'])
+def get_current_score():
+    """获取当前权重在历史对局上的得分"""
+    try:
+        game_ids = gradient_learning.get_recent_games()
+        current_weights = gradient_learning.get_current_weights()
+        score = gradient_learning.evaluate_weights(current_weights, game_ids)
+        return ok({
+            'score': score,
+            'history_games': len(game_ids),
+            'game_ids': game_ids
+        })
+    except Exception as e:
+        import traceback
+        print(f"[梯度学习] 获取当前得分失败: {e}")
+        print(f"[梯度学习] 错误堆栈: {traceback.format_exc()}")
+        return fail(f"获取得分失败: {str(e)}", 500)
