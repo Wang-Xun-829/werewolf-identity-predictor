@@ -94,12 +94,13 @@ def backup_weights(backup_name):
     current_weights = get_current_weights()
     weights_json = json.dumps({f"{k[0]}_{k[1]}": v for k, v in current_weights.items()})
     
-    result = query_one(
+    # 使用execute_write执行INSERT，它会自动返回新插入的ID
+    new_id = execute_write(
         f"INSERT INTO weight_backups (backup_name, weights_data, reason) "
-        f"VALUES ({ph()}, {ph()}, {ph()}) RETURNING id",
+        f"VALUES ({ph()}, {ph()}, {ph()})",
         (backup_name, weights_json, 'gradient_learning')
     )
-    return result['id'] if result else None
+    return new_id
 
 
 def restore_weights(backup_id):
@@ -108,7 +109,15 @@ def restore_weights(backup_id):
     if not backup:
         return False
     
-    weights_data = json.loads(backup['weights_data'])
+    # 处理weights_data：PostgreSQL的JSONB字段可能返回dict，也可能返回字符串
+    weights_raw = backup['weights_data']
+    if isinstance(weights_raw, dict):
+        weights_data = weights_raw
+    elif isinstance(weights_raw, str):
+        weights_data = json.loads(weights_raw)
+    else:
+        weights_data = {}
+    
     for key, weight in weights_data.items():
         action_id, role_id = map(int, key.split('_'))
         execute_write(
@@ -146,10 +155,11 @@ def save_learning_log(log_data):
     """保存学习日志"""
     init_learning_log_table()
     details_json = json.dumps(log_data.get('details', {}))
-    result = query_one(
+    # 使用execute_write执行INSERT，它会自动返回新插入的ID
+    new_id = execute_write(
         f"""INSERT INTO learning_logs 
             (game_id, initial_score, final_score, iterations, status, details)
-            VALUES ({ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()}) RETURNING id""",
+            VALUES ({ph()}, {ph()}, {ph()}, {ph()}, {ph()}, {ph()})""",
         (
             log_data.get('game_id'),
             log_data.get('initial_score'),
@@ -159,7 +169,7 @@ def save_learning_log(log_data):
             details_json
         )
     )
-    return result['id'] if result else None
+    return new_id
 
 
 # ============================================================
