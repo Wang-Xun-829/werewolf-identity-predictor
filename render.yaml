@@ -3,8 +3,8 @@ services:
     name: werewolf-identity-predictor
     env: python
     plan: free
-    buildCommand: "cd backend && pip install -r requirements.txt"
-    startCommand: "cd backend && gunicorn main:app -w 2 -k uvicorn.workers.UvicornWorker"
+    buildCommand: "pip install -r backend/requirements.txt"
+    startCommand: "gunicorn main:app -w 2 -k uvicorn.workers.UvicornWorker --chdir backend"
     envVars:
       - key: DATABASE_URL
         sync: false
