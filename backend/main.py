@@ -918,17 +918,16 @@ def get_learning_history(limit: int = 10, db: Session = Depends(get_db)):
 
 @app.get("/api/games/{game_id}/prophet_analysis")
 def get_prophet_analysis(game_id: int, db: Session = Depends(get_db)):
-    """获取预言家查验链分析（使用新的综合逻辑引擎）"""
+    """获取预言家查验链分析（使用独立的prophet_inference模块）"""
     try:
-        from logic_engine_v2 import ComprehensiveLogicEngine
+        from prophet_inference import analyze_check_chain
         
         game = db.query(Game).filter(Game.id == game_id).first()
         if not game:
             raise HTTPException(status_code=404, detail="对局不存在")
         
-        # 调用综合逻辑引擎
-        engine = ComprehensiveLogicEngine(db, game_id)
-        result = engine.run_full_analysis()
+        # 调用独立的预言家查验链分析模块
+        result = analyze_check_chain(db, game_id)
         
         return {"game_id": game_id, "data": result}
     except Exception as e:
