@@ -919,17 +919,23 @@ def get_learning_history(limit: int = 10, db: Session = Depends(get_db)):
 @app.get("/api/games/{game_id}/prophet_analysis")
 def get_prophet_analysis(game_id: int, db: Session = Depends(get_db)):
     """获取预言家查验链分析（使用新的综合逻辑引擎）"""
-    from logic_engine_v2 import ComprehensiveLogicEngine
-    
-    game = db.query(Game).filter(Game.id == game_id).first()
-    if not game:
-        raise HTTPException(status_code=404, detail="对局不存在")
-    
-    # 调用综合逻辑引擎
-    engine = ComprehensiveLogicEngine(db, game_id)
-    result = engine.run_full_analysis()
-    
-    return {"game_id": game_id, "data": result}
+    try:
+        from logic_engine_v2 import ComprehensiveLogicEngine
+        
+        game = db.query(Game).filter(Game.id == game_id).first()
+        if not game:
+            raise HTTPException(status_code=404, detail="对局不存在")
+        
+        # 调用综合逻辑引擎
+        engine = ComprehensiveLogicEngine(db, game_id)
+        result = engine.run_full_analysis()
+        
+        return {"game_id": game_id, "data": result}
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        print("预言家分析错误:", error_detail)
+        raise HTTPException(status_code=500, detail=f"预言家分析错误: {str(e)}")
 
 
 # ==================== 综合逻辑分析 ====================
