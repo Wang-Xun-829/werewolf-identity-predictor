@@ -892,14 +892,30 @@ def advance_game_phase(game_id: int, custom_phase: Optional[str] = None, db: Ses
     if custom_phase:
         game.current_phase = custom_phase
     else:
-        # 简单的阶段流转
-        phases = ["第一个黑夜", "警上发言", "警徽投票", "死讯公布", "白天发言", "放逐投票", "遗言"]
-        current_idx = phases.index(game.current_phase) if game.current_phase in phases else -1
-        if current_idx < len(phases) - 1:
-            game.current_phase = phases[current_idx + 1]
+        # 第1轮使用完整阶段列表，第2轮及以后简化（没有警上发言、警徽投票、死讯公布）
+        if game.current_round <= 1:
+            phases = ["未开始", "第一个黑夜", "警上发言", "警徽投票", "死讯公布", "白天发言", "放逐投票", "遗言"]
         else:
+            phases = ["黑夜", "白天发言", "放逐投票", "遗言"]
+        
+        current_idx = phases.index(game.current_phase) if game.current_phase in phases else -1
+        
+        if current_idx >= 0 and current_idx < len(phases) - 1:
+            # 正常进入下一阶段
+            game.current_phase = phases[current_idx + 1]
+        elif current_idx == len(phases) - 1:
+            # 已经是最后一个阶段，进入下一轮
             game.current_round += 1
-            game.current_phase = "黑夜"
+            if game.current_round <= 1:
+                game.current_phase = "第一个黑夜"
+            else:
+                game.current_phase = "黑夜"
+        else:
+            # 当前阶段不在列表中（如"未开始"），进入第一个阶段
+            if game.current_round <= 1:
+                game.current_phase = "第一个黑夜"
+            else:
+                game.current_phase = "黑夜"
     
     db.commit()
     return {"success": True, "phase": game.current_phase, "round": game.current_round}

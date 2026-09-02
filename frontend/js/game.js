@@ -1283,3 +1283,349 @@ async function deleteConfirmedIdentity(id) {
     loadAnalysisContent('confirmed');
     await refreshPredictions();
 }
+
+// ==================== 快速投票输入 ====================
+
+// 快速投票数据
+let quickVoteRows = [];
+let currentVoteType = 'banish'; // 'police' = 警徽投票, 'banish' = 放逐投票
+
+// 从DOM获取玩家列表
+function getPlayersFromDOM() {
+    const game = document.getElementById('game-players-list');
+    if (!game) return [];
+    return Array.from(game.querySelectorAll('.player-item')).map(item => {
+        const player_name = item.querySelector('.player-name-main').textContent;
+        const player_id = parseInt(item.getAttribute('data-player-id'));
+        const seatText = item.querySelector('.player-seat-box').textContent;
+        const seat_number = seatText && seatText !== '👑' && !isNaN(parseInt(seatText)) ? parseInt(seatText) : null;
+        const is_alive = item.querySelector('.dot-alive-small') !== null;
+        const is_on_police = item.querySelector('.dot-police') !== null; // 上警玩家（粉色"警"）
+        const is_retired = item.querySelector('.dot-retired') !== null; // 退水玩家（红色"退"）
+        return { player_id, player_name, seat_number, is_alive, is_on_police, is_retired };
+    });
+}
+
+// 显示快速投票弹窗
+function showQuickVoteModal() {
+    // 获取当前存活的玩家列表
+    const allPlayers = getPlayersFromDOM();
+    const alivePlayers = allPlayers.filter(p => p.is_alive);
+    
+    if (alivePlayers.length === 0) {
+        showToast('没有存活的玩家', 'error');
+        return;
+    }
+    
+    // 初始化一行
+    quickVoteRows = [{ voters: [], target: null }];
+    currentVoteType = 'banish'; // 默认放逐投票
+    
+    renderQuickVoteTypeSelect(alivePlayers);
+}
+
+// 渲染投票类型选择
+function renderQuickVoteTypeSelect(alivePlayers) {
+    showModal('快速投票 - 选择类型', `
+        <div style="padding: 20px 0;">
+            <div style="font-size: 14px; color: var(--text-primary); margin-bottom: 16px;">请选择投票类型：</div>
+            <div style="display: flex; gap: 16px;">
+                <button class="btn btn-primary" onclick="startQuickVote('police')" style="flex: 1; padding: 20px;">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 4px;">警徽投票</div>
+                    <div style="font-size: 12px; opacity: 0.8;">仅警下存活玩家可投票</div>
+                </button>
+                <button class="btn btn-primary" onclick="startQuickVote('banish')" style="flex: 1; padding: 20px;">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 4px;">放逐投票</div>
+                    <div style="font-size: 12px; opacity: 0.8;">所有存活玩家均可投票</div>
+                </button>
+            </div>
+        </div>
+    `, `
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+    `);
+}
+
+// 开始快速投票
+function startQuickVote(voteType) {
+    currentVoteType = voteType;
+    const eligiblePlayers = getEligibleVoters();
+    
+    if (eligiblePlayers.length === 0) {
+        showToast('没有可投票的玩家', 'error');
+        return;
+    }
+    
+    quickVoteRows = [{ voters: [], target: null }];
+    renderQuickVoteModal(eligiblePlayers);
+}
+
+// 获取当前投票类型下可投票的玩家
+function getEligibleVoters() {
+    const allPlayers = getPlayersFromDOM();
+    if (currentVoteType === 'police') {
+        // 警徽投票：只有警下（没有上警，也没有退水）的存活玩家可以投票
+        return allPlayers.filter(p => p.is_alive && !p.is_on_police && !p.is_retired);
+    } else {
+        // 放逐投票：所有存活玩家均可投票
+        return allPlayers.filter(p => p.is_alive);
+    }
+}
+
+// 渲染快速投票弹窗
+function renderQuickVoteModal(alivePlayers) {
+    const title = currentVoteType === 'police' ? '警徽投票 - 快速录入' : '放逐投票 - 快速录入';
+    const playerOptions = alivePlayers.map(p => 
+        `<option value="${p.player_id}">${p.seat_number ? p.seat_number + '号 ' : ''}${p.player_name}</option>`
+    ).join('');
+    
+    const rowsHtml = quickVoteRows.map((row, index) => {
+        // 计算已经在前面行中被选择的投票玩家ID集合
+        const usedVoterIds = new Set();
+        for (let i = 0; i < index; i++) {
+            quickVoteRows[i].voters.forEach(id => usedVoterIds.add(id));
+        }
+        
+        // 当前行可用的投票玩家：排除前面行已使用的，但保留当前行已选择的
+        const availableVoters = alivePlayers.filter(p => 
+            !usedVoterIds.has(p.player_id) || row.voters.includes(p.player_id)
+        );
+        
+        return `
+        <div class="quick-vote-row" data-row-index="${index}" style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; padding: 12px; border: 1px solid rgba(0,212,255,0.15); border-radius: 6px; background: rgba(0,212,255,0.02);">
+            <div style="flex: 1;">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">投票玩家（可多选）</div>
+                <div class="quick-vote-voters" style="max-height: 120px; overflow-y: auto; border: 1px solid rgba(0,212,255,0.1); border-radius: 4px; padding: 8px;">
+                    ${availableVoters.map(p => `
+                        <label style="display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; font-size: 13px;">
+                            <input type="checkbox" class="quick-vote-voter" data-row="${index}" data-player="${p.player_id}" ${row.voters.includes(p.player_id) ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer;">
+                            <span>${p.seat_number ? p.seat_number + '号' : ''} ${p.player_name}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+            <div style="width: 180px;">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">被投目标</div>
+                <select class="quick-vote-target" data-row="${index}" style="width: 100%; padding: 8px; border: 1px solid rgba(0,212,255,0.2); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); font-size: 13px;">
+                    <option value="">请选择</option>
+                    ${playerOptions}
+                </select>
+            </div>
+            <div style="display: flex; align-items: center; padding-top: 20px;">
+                <button class="btn btn-small btn-danger" onclick="removeVoteRow(${index})" style="padding: 6px 10px;">删除</button>
+            </div>
+        </div>
+    `}).join('');
+    
+    showModal(title, `
+        <div style="margin-bottom: 12px;">
+            <button class="btn btn-small btn-secondary" onclick="addVoteRow()">+ 添加一行</button>
+            <span style="font-size: 12px; color: var(--text-muted); margin-left: 10px;">未在任何行中投票的玩家将自动记为弃票</span>
+        </div>
+        <div id="quick-vote-rows-container">
+            ${rowsHtml}
+        </div>
+    `, `
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="previewVoteResult()">预览结果</button>
+    `);
+    
+    // 监听变化
+    setTimeout(() => {
+        document.querySelectorAll('.quick-vote-voter').forEach(cb => {
+            cb.addEventListener('change', updateQuickVoteData);
+        });
+        document.querySelectorAll('.quick-vote-target').forEach(sel => {
+            sel.addEventListener('change', updateQuickVoteData);
+        });
+    }, 100);
+}
+
+// 更新快速投票数据
+function updateQuickVoteData() {
+    const alivePlayers = getPlayersFromDOM().filter(p => p.is_alive);
+    quickVoteRows = [];
+    
+    document.querySelectorAll('.quick-vote-row').forEach(row => {
+        const rowIndex = parseInt(row.getAttribute('data-row-index'));
+        const voters = Array.from(row.querySelectorAll('.quick-vote-voter:checked')).map(cb => 
+            parseInt(cb.getAttribute('data-player'))
+        );
+        const target = parseInt(row.querySelector('.quick-vote-target').value) || null;
+        quickVoteRows.push({ voters, target });
+    });
+}
+
+// 添加一行
+function addVoteRow() {
+    updateQuickVoteData();
+    quickVoteRows.push({ voters: [], target: null });
+    const eligiblePlayers = getEligibleVoters();
+    renderQuickVoteModal(eligiblePlayers);
+}
+
+// 删除一行
+function removeVoteRow(index) {
+    updateQuickVoteData();
+    quickVoteRows.splice(index, 1);
+    if (quickVoteRows.length === 0) {
+        quickVoteRows.push({ voters: [], target: null });
+    }
+    const eligiblePlayers = getEligibleVoters();
+    renderQuickVoteModal(eligiblePlayers);
+}
+
+// 预览投票结果
+function previewVoteResult() {
+    updateQuickVoteData();
+    
+    const alivePlayers = getEligibleVoters();
+    const allVoterIds = new Set();
+    const voteMap = {}; // target_id -> [voter_ids]
+    const errors = [];
+    
+    // 检查每一行
+    quickVoteRows.forEach((row, index) => {
+        if (row.voters.length === 0) {
+            errors.push(`第${index + 1}行：没有选择投票玩家`);
+        }
+        if (!row.target) {
+            errors.push(`第${index + 1}行：没有选择被投目标`);
+        }
+        if (row.voters.length > 0 && row.target) {
+            if (!voteMap[row.target]) voteMap[row.target] = [];
+            row.voters.forEach(vid => {
+                if (allVoterIds.has(vid)) {
+                    const voter = alivePlayers.find(p => p.player_id === vid);
+                    errors.push(`玩家${voter ? voter.player_name : vid}重复投票`);
+                } else {
+                    allVoterIds.add(vid);
+                    voteMap[row.target].push(vid);
+                }
+            });
+        }
+    });
+    
+    if (errors.length > 0) {
+        showToast(errors[0], 'error');
+        return;
+    }
+    
+    // 计算弃票玩家
+    const abstainPlayers = alivePlayers.filter(p => !allVoterIds.has(p.player_id));
+    
+    // 渲染预览
+    const previewHtml = `
+        <div style="margin-bottom: 16px;">
+            <h4 style="color: var(--text-primary); margin-bottom: 12px;">投票结果预览</h4>
+            ${Object.entries(voteMap).map(([targetId, voterIds]) => {
+                const target = alivePlayers.find(p => p.player_id === parseInt(targetId));
+                const voters = voterIds.map(vid => {
+                    const v = alivePlayers.find(p => p.player_id === vid);
+                    return v ? `${v.seat_number ? v.seat_number + '号' : ''}${v.player_name}` : '未知';
+                }).join('、');
+                return `
+                    <div style="padding: 10px; margin-bottom: 8px; border: 1px solid rgba(0,212,255,0.15); border-radius: 4px; background: rgba(0,212,255,0.03);">
+                        <div style="font-weight: 600; color: #00d4ff; margin-bottom: 4px;">
+                            ${target ? (target.seat_number ? target.seat_number + '号 ' : '') + target.player_name : '未知'} 
+                            <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">(${voterIds.length}票)</span>
+                        </div>
+                        <div style="font-size: 13px; color: var(--text-secondary);">投票玩家：${voters}</div>
+                    </div>
+                `;
+            }).join('')}
+            ${abstainPlayers.length > 0 ? `
+                <div style="padding: 10px; margin-bottom: 8px; border: 1px solid rgba(158,158,158,0.3); border-radius: 4px; background: rgba(158,158,158,0.05);">
+                    <div style="font-weight: 600; color: #9e9e9e; margin-bottom: 4px;">
+                        弃票玩家 <span style="font-size: 12px; font-weight: normal;">(${abstainPlayers.length}人)</span>
+                    </div>
+                    <div style="font-size: 13px; color: var(--text-secondary);">
+                        ${abstainPlayers.map(p => `${p.seat_number ? p.seat_number + '号' : ''}${p.player_name}`).join('、')}
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+        <div style="font-size: 12px; color: var(--text-muted);">
+            确认以上信息无误后点击"确认录入"，如有错误请点击"返回修改"
+        </div>
+    `;
+    
+    const resultTitle = currentVoteType === 'police' ? '警徽投票 - 结果确认' : '放逐投票 - 结果确认';
+    showModal(resultTitle, previewHtml, `
+        <button class="btn btn-secondary" onclick="backToVoteEdit()">返回修改</button>
+        <button class="btn btn-primary" onclick="confirmVoteInput()">确认录入</button>
+    `);
+}
+
+// 返回投票编辑
+function backToVoteEdit() {
+    const eligiblePlayers = getEligibleVoters();
+    renderQuickVoteModal(eligiblePlayers);
+}
+
+// 确认投票录入
+async function confirmVoteInput() {
+    try {
+        const alivePlayers = getEligibleVoters();
+        const allVoterIds = new Set();
+        const voteActions = [];
+        
+        // 获取当前轮次和阶段
+        const phase = document.getElementById('current-phase').textContent;
+        const roundText = document.getElementById('current-round').textContent;
+        const round = parseInt(roundText.replace(/[^0-9]/g, '')) || 1;
+        
+        // 构建投票行为
+        quickVoteRows.forEach(row => {
+            if (row.voters.length > 0 && row.target) {
+                row.voters.forEach(vid => {
+                    if (!allVoterIds.has(vid)) {
+                        allVoterIds.add(vid);
+                        voteActions.push({
+                            player_id: vid,
+                            target_player_id: row.target,
+                            action_type_ids: [currentVoteType === 'police' ? 30 : 33], // 30=投警徽票, 33=投放逐票
+                            round_number: round,
+                            phase: phase,
+                            notes: '快速投票录入'
+                        });
+                    }
+                });
+            }
+        });
+        
+        // 弃票玩家
+        const abstainPlayers = alivePlayers.filter(p => !allVoterIds.has(p.player_id));
+        abstainPlayers.forEach(p => {
+            voteActions.push({
+                player_id: p.player_id,
+                target_player_id: null,
+                action_type_ids: [12], // 弃票
+                round_number: round,
+                phase: phase,
+                notes: '快速投票录入-弃票'
+            });
+        });
+        
+        // 批量录入
+        let successCount = 0;
+        for (const action of voteActions) {
+            const result = await GameAPI.createActionsBatch({
+                game_id: currentGameId,
+                ...action
+            });
+            if (Array.isArray(result)) {
+                successCount += result.length;
+            }
+        }
+        
+        closeModal();
+        showToast(`成功录入${successCount}条投票记录`);
+        
+        // 刷新数据
+        await loadBehaviorRecords();
+        await refreshPredictions();
+        
+    } catch (error) {
+        showToast('录入失败: ' + error.message, 'error');
+    }
+}
