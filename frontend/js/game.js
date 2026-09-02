@@ -666,10 +666,10 @@ async function advancePhase() {
 function showPoliceSelectModal() {
     const game = document.getElementById('game-players-list');
     const players = Array.from(game.querySelectorAll('.player-item')).map(item => {
-        const name = item.querySelector('.player-name').textContent;
+        const name = item.querySelector('.player-name-main').textContent;
         const id = parseInt(item.getAttribute('data-player-id'));
-        const seat = item.querySelector('.player-seat-number').textContent;
-        const isOnPolice = item.querySelector('.status-police') !== null;
+        const seat = item.querySelector('.player-seat-box').textContent;
+        const isOnPolice = item.querySelector('.dot-police') !== null;
         return { id, name, seat, isOnPolice };
     });
     
@@ -739,8 +739,8 @@ function showWolfExplodeModal() {
             <label>选择自爆玩家</label>
             <select id="explode-player">
                 ${Array.from(game.querySelectorAll('.player-item')).map(item => {
-                    const name = item.querySelector('.player-name').textContent;
-                    const id = item.getAttribute('onclick').match(/\d+/)[0];
+                    const name = item.querySelector('.player-name-main').textContent;
+                    const id = item.getAttribute('data-player-id');
                     return `<option value="${id}">${name}</option>`;
                 }).join('')}
             </select>
@@ -1056,8 +1056,8 @@ async function loadAnalysisContent(tab) {
 function showAddConstraintModal() {
     const game = document.getElementById('game-players-list');
     const playerOptions = Array.from(game.querySelectorAll('.player-item')).map(item => {
-        const name = item.querySelector('.player-name').textContent;
-        const id = item.getAttribute('onclick').match(/\d+/)[0];
+        const name = item.querySelector('.player-name-main').textContent;
+        const id = item.getAttribute('data-player-id');
         return `<option value="${id}">${name}</option>`;
     }).join('');
     
@@ -1114,8 +1114,8 @@ async function confirmAddConstraint() {
 function showAddConfirmedIdentityModal() {
     const game = document.getElementById('game-players-list');
     const playerOptions = Array.from(game.querySelectorAll('.player-item')).map(item => {
-        const name = item.querySelector('.player-name').textContent;
-        const id = item.getAttribute('onclick').match(/\d+/)[0];
+        const name = item.querySelector('.player-name-main').textContent;
+        const id = item.getAttribute('data-player-id');
         return `<option value="${id}">${name}</option>`;
     }).join('');
     
