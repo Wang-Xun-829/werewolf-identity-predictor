@@ -358,12 +358,16 @@ def get_game(game_id: int, db: Session = Depends(get_db)):
     }
     
     # 添加玩家列表
+    # 优化：一次性查询所有玩家状态，避免N+1查询
+    player_statuses = db.query(PlayerStatus).filter(
+        PlayerStatus.game_id == game_id
+    ).all()
+    # 构建player_id -> status的映射
+    status_map = {ps.player_id: ps for ps in player_statuses}
+    
     for gp in game.game_players:
-        # 获取玩家状态
-        player_status = db.query(PlayerStatus).filter(
-            PlayerStatus.game_id == game_id,
-            PlayerStatus.player_id == gp.player_id
-        ).first()
+        # 从映射中获取玩家状态，避免每次查询
+        player_status = status_map.get(gp.player_id)
         
         player_data = {
             "id": gp.id,
