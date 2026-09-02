@@ -136,6 +136,15 @@ async function loadGamePlayers() {
                 campClass = 'camp-good';
             }
         }
+        // 内联样式 - 确保阵营背景颜色生效（不依赖CSS文件）
+        let campStyle = '';
+        if (campClass === 'camp-wolf') {
+            campStyle = 'background-color: rgba(239, 83, 80, 0.18); border: 1px solid rgba(239, 83, 80, 0.4);';
+        } else if (campClass === 'camp-god') {
+            campStyle = 'background-color: rgba(255, 202, 40, 0.18); border: 1px solid rgba(255, 202, 40, 0.4);';
+        } else if (campClass === 'camp-good') {
+            campStyle = 'background-color: rgba(66, 165, 245, 0.18); border: 1px solid rgba(66, 165, 245, 0.4);';
+        }
         
         // 状态 - 带文字的小圆圈
         let policeClass, policeText, policeTitle;
@@ -163,6 +172,7 @@ async function loadGamePlayers() {
         
         return `
         <div class="player-item ${currentPlayerId === p.player_id ? 'selected' : ''} ${campClass}" 
+             style="${campStyle}"
              data-player-id="${p.player_id}"
              onclick="selectPlayer(${p.player_id})">
             <div class="player-seat-box ${isSheriff ? 'sheriff-seat' : ''}">

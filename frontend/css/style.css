@@ -1728,40 +1728,40 @@ body::after {
 }
 }
 
-/* 阵营颜色 - 玩家条目整个背景填充 */
-.player-item.camp-wolf {
-    background: rgba(239, 83, 80, 0.18);
-    border: 1px solid rgba(239, 83, 80, 0.4);
+/* 阵营颜色 - 玩家条目整个背景填充（使用ID选择器提高特异性） */
+#game-players-list .player-item.camp-wolf {
+    background-color: rgba(239, 83, 80, 0.18) !important;
+    border: 1px solid rgba(239, 83, 80, 0.4) !important;
     box-shadow: 0 0 8px rgba(239, 83, 80, 0.1);
 }
 
-.player-item.camp-wolf:hover {
-    background: rgba(239, 83, 80, 0.28);
-    border-color: rgba(239, 83, 80, 0.6);
+#game-players-list .player-item.camp-wolf:hover {
+    background-color: rgba(239, 83, 80, 0.28) !important;
+    border-color: rgba(239, 83, 80, 0.6) !important;
     box-shadow: 0 0 14px rgba(239, 83, 80, 0.18);
 }
 
-.player-item.camp-god {
-    background: rgba(255, 202, 40, 0.18);
-    border: 1px solid rgba(255, 202, 40, 0.4);
+#game-players-list .player-item.camp-god {
+    background-color: rgba(255, 202, 40, 0.18) !important;
+    border: 1px solid rgba(255, 202, 40, 0.4) !important;
     box-shadow: 0 0 8px rgba(255, 202, 40, 0.1);
 }
 
-.player-item.camp-god:hover {
-    background: rgba(255, 202, 40, 0.28);
-    border-color: rgba(255, 202, 40, 0.6);
+#game-players-list .player-item.camp-god:hover {
+    background-color: rgba(255, 202, 40, 0.28) !important;
+    border-color: rgba(255, 202, 40, 0.6) !important;
     box-shadow: 0 0 14px rgba(255, 202, 40, 0.18);
 }
 
-.player-item.camp-good {
-    background: rgba(66, 165, 245, 0.18);
-    border: 1px solid rgba(66, 165, 245, 0.4);
+#game-players-list .player-item.camp-good {
+    background-color: rgba(66, 165, 245, 0.18) !important;
+    border: 1px solid rgba(66, 165, 245, 0.4) !important;
     box-shadow: 0 0 8px rgba(66, 165, 245, 0.1);
 }
 
-.player-item.camp-good:hover {
-    background: rgba(66, 165, 245, 0.28);
-    border-color: rgba(66, 165, 245, 0.6);
+#game-players-list .player-item.camp-good:hover {
+    background-color: rgba(66, 165, 245, 0.28) !important;
+    border-color: rgba(66, 165, 245, 0.6) !important;
     box-shadow: 0 0 14px rgba(66, 165, 245, 0.18);
 }
 
