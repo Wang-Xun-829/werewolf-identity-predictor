@@ -305,7 +305,7 @@ def apply_confirmed_identities(
     """
     应用确认身份（逻辑基点）：
     - 如果某玩家身份已确认，则该身份概率=1，其他=0
-    - 如果某玩家阵营已确认，则该阵营身份概率提升，其他降低
+    - 如果某玩家阵营已确认，则非该阵营身份概率=0，该阵营身份概率保持行为记录的计算结果，然后归一化（100%确认阵营）
     """
     confirmed = db.query(ConfirmedIdentity).filter(ConfirmedIdentity.game_id == game_id).all()
     
@@ -314,22 +314,26 @@ def apply_confirmed_identities(
             continue
         
         if c.identity_id:
-            # 确认具体身份
+            # 确认具体身份：该身份概率=1，其他=0
             for ident_id in current_probs[c.player_id]:
                 current_probs[c.player_id][ident_id] = 1.0 if ident_id == c.identity_id else 0.0
         elif c.camp_only:
-            # 只确认阵营
+            # 100%确认阵营：非该阵营身份概率=0，该阵营身份概率保持行为记录结果，然后归一化
             identity_name_map = get_identity_name_map(db)
+            
+            # 非该阵营身份概率设为0，该阵营身份概率保持不变
             for ident_id in current_probs[c.player_id]:
                 ident_name = identity_name_map.get(ident_id, "")
+                is_in_camp = False
                 if c.camp_only == "good" and "狼" not in ident_name:
-                    current_probs[c.player_id][ident_id] *= 2.0
+                    is_in_camp = True
                 elif c.camp_only == "wolf" and "狼" in ident_name:
-                    current_probs[c.player_id][ident_id] *= 2.0
-                else:
-                    current_probs[c.player_id][ident_id] *= 0.5
+                    is_in_camp = True
+                
+                if not is_in_camp:
+                    current_probs[c.player_id][ident_id] = 0.0
             
-            # 归一化
+            # 归一化（该阵营身份概率总和=1）
             total = sum(current_probs[c.player_id].values())
             if total > 0:
                 for ident_id in current_probs[c.player_id]:

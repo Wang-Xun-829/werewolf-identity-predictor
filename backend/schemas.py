@@ -224,6 +224,7 @@ class ActionBatchCreate(BaseModel):
     phase: Optional[str] = ""
     declared_identity_id: Optional[int] = None
     notes: Optional[str] = ""
+    duel_result: Optional[str] = None  # 骑士决斗结果：initiator_dies（发起者死亡）或 target_dies（被决斗者死亡）
 
 class ActionUpdate(BaseModel):
     target_player_id: Optional[int] = None

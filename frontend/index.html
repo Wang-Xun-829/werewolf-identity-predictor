@@ -130,6 +130,20 @@
                                 <label>具体行为（可多选）</label>
                                 <div class="action-tree-container" id="action-tree"></div>
                             </div>
+                            <!-- 骑士决斗结果选择（默认隐藏） -->
+                            <div class="form-group" id="knight-duel-result-group" style="display: none;">
+                                <label>决斗结果（骑士决斗必选）</label>
+                                <div class="duel-result-options">
+                                    <label class="duel-result-option">
+                                        <input type="radio" name="duel_result" value="initiator_dies">
+                                        <span>发起者（骑士）死亡 → 被决斗者是好人</span>
+                                    </label>
+                                    <label class="duel-result-option">
+                                        <input type="radio" name="duel_result" value="target_dies">
+                                        <span>被决斗者死亡 → 被决斗者是狼人</span>
+                                    </label>
+                                </div>
+                            </div>
                             <div class="action-form-grid">
                                 <div class="form-group">
                                     <label>声明身份（可选）</label>

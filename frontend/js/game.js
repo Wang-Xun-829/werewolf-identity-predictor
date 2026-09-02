@@ -366,16 +366,48 @@ async function loadActionTree() {
     allActions = actions || [];
     const container = document.getElementById('action-tree');
     
+    // 分类名称映射表（英文 → 中文）
+    const categoryMap = {
+        'IDENTITY_CLAIM': '身份声明',
+        'STANCE_EXPRESSION': '立场表达',
+        'IDENTITY_CONFLICT': '身份冲突',
+        'VOTE_ACTION': '投票行为',
+        'IDENTITY_CONFIRM': '身份确认',
+        'OTHER': '其他',
+        'EVENT': '事件',
+        '身份声明': '身份声明',
+        '立场表达': '立场表达',
+        '身份冲突': '身份冲突',
+        '投票行为': '投票行为',
+        '身份确认': '身份确认',
+        '其他': '其他',
+        '事件': '事件'
+    };
+    
+    // 分类显示顺序
+    const categoryOrder = ['身份声明', '立场表达', '身份冲突', '投票行为', '身份确认', '事件', '其他'];
+    
     // 按分类分组（只包含一级行为）
     const categories = {};
     actions.forEach(action => {
         if (action.parent_id) return; // 跳过非一级行为
-        const cat = action.category || '其他';
+        const rawCat = action.category || '其他';
+        const cat = categoryMap[rawCat] || rawCat; // 翻译成中文
         if (!categories[cat]) categories[cat] = [];
         categories[cat].push(action);
     });
     
-    container.innerHTML = Object.entries(categories).map(([cat, actionList]) => `
+    // 按指定顺序排序分类
+    const sortedCategories = Object.entries(categories).sort((a, b) => {
+        const orderA = categoryOrder.indexOf(a[0]);
+        const orderB = categoryOrder.indexOf(b[0]);
+        if (orderA === -1 && orderB === -1) return a[0].localeCompare(b[0]);
+        if (orderA === -1) return 1;
+        if (orderB === -1) return -1;
+        return orderA - orderB;
+    });
+    
+    container.innerHTML = sortedCategories.map(([cat, actionList]) => `
         <div class="action-category">
             <div class="action-category-title">${cat}</div>
             <div class="action-options">
@@ -436,6 +468,18 @@ function toggleActionSelect(actionId, event) {
         selectedActionIds.push(actionId);
     }
     
+    // 检测是否选择了骑士决斗行为（ID=65），显示/隐藏决斗结果选择
+    const knightDuelGroup = document.getElementById('knight-duel-result-group');
+    if (knightDuelGroup) {
+        if (selectedActionIds.includes(65)) {
+            knightDuelGroup.style.display = 'block';
+        } else {
+            knightDuelGroup.style.display = 'none';
+            // 清除已选择的决斗结果
+            document.querySelectorAll('input[name="duel_result"]').forEach(radio => radio.checked = false);
+        }
+    }
+    
     loadActionTree();
 }
 
@@ -451,6 +495,21 @@ async function submitActions() {
     const declaredIdentityId = parseInt(document.getElementById('action-declared-identity').value) || null;
     const notes = document.getElementById('action-notes').value;
     
+    // 骑士决斗结果验证
+    let duelResult = null;
+    if (selectedActionIds.includes(65)) {
+        const selectedDuelResult = document.querySelector('input[name="duel_result"]:checked');
+        if (!selectedDuelResult) {
+            showToast('请选择骑士决斗的结果', 'error');
+            return;
+        }
+        if (!targetId) {
+            showToast('骑士决斗必须选择被决斗的目标玩家', 'error');
+            return;
+        }
+        duelResult = selectedDuelResult.value;
+    }
+    
     // 获取当前阶段
     const phase = document.getElementById('current-phase').textContent;
     const roundText = document.getElementById('current-round').textContent;
@@ -464,7 +523,8 @@ async function submitActions() {
         round_number: round,
         phase: phase,
         declared_identity_id: declaredIdentityId,
-        notes: notes
+        notes: notes,
+        duel_result: duelResult
     });
     
     if (Array.isArray(result)) {

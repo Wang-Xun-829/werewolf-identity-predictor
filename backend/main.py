@@ -634,6 +634,75 @@ def create_actions_batch(actions: ActionBatchCreate, db: Session = Depends(get_d
         db.add(db_action)
         db.flush()
         result.append(db_action)
+    
+    # 处理骑士决斗结果（action_type_id=65）
+    if 65 in actions.action_type_ids and actions.duel_result and actions.target_player_id:
+        target_player_id = actions.target_player_id
+        initiator_id = actions.player_id
+        
+        # 1. 确认发起者100%是骑士
+        knight_identity = db.query(Identity).filter(Identity.name == "骑士").first()
+        if knight_identity:
+            existing_knight = db.query(ConfirmedIdentity).filter(
+                ConfirmedIdentity.game_id == actions.game_id,
+                ConfirmedIdentity.player_id == initiator_id,
+                ConfirmedIdentity.identity_id == knight_identity.id
+            ).first()
+            if not existing_knight:
+                confirmed_knight = ConfirmedIdentity(
+                    game_id=actions.game_id,
+                    player_id=initiator_id,
+                    identity_id=knight_identity.id,
+                    reason=f"骑士决斗：发动决斗者100%为骑士"
+                )
+                db.add(confirmed_knight)
+        
+        if actions.duel_result == "initiator_dies":
+            # 发起者（骑士）死亡 → 被决斗者100%是好人
+            existing = db.query(ConfirmedIdentity).filter(
+                ConfirmedIdentity.game_id == actions.game_id,
+                ConfirmedIdentity.player_id == target_player_id
+            ).first()
+            if not existing:
+                confirmed = ConfirmedIdentity(
+                    game_id=actions.game_id,
+                    player_id=target_player_id,
+                    camp_only="good",
+                    reason=f"骑士决斗：骑士死亡，被决斗者100%为好人阵营"
+                )
+                db.add(confirmed)
+            
+            # 更新发起者存活状态为死亡
+            player_status = db.query(PlayerStatus).filter(
+                PlayerStatus.game_id == actions.game_id,
+                PlayerStatus.player_id == initiator_id
+            ).first()
+            if player_status:
+                player_status.is_alive = False
+            
+        elif actions.duel_result == "target_dies":
+            # 被决斗者死亡 → 被决斗者100%是狼人
+            existing = db.query(ConfirmedIdentity).filter(
+                ConfirmedIdentity.game_id == actions.game_id,
+                ConfirmedIdentity.player_id == target_player_id
+            ).first()
+            if not existing:
+                confirmed = ConfirmedIdentity(
+                    game_id=actions.game_id,
+                    player_id=target_player_id,
+                    camp_only="wolf",
+                    reason=f"骑士决斗：被决斗者死亡，被决斗者100%为狼人阵营"
+                )
+                db.add(confirmed)
+            
+            # 更新被决斗者存活状态为死亡
+            player_status = db.query(PlayerStatus).filter(
+                PlayerStatus.game_id == actions.game_id,
+                PlayerStatus.player_id == target_player_id
+            ).first()
+            if player_status:
+                player_status.is_alive = False
+    
     db.commit()
     for action in result:
         db.refresh(action)
