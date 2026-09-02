@@ -122,9 +122,15 @@ async function loadGamePlayers() {
         let campClass = '';
         const campInfo = campData[p.player_id];
         if (campInfo && campInfo.top_guess && campInfo.confidence >= 0.15) {
-            if (campInfo.camp_prediction === 'wolf') {
+            // 狼人阵营判断：camp_prediction为wolf 或者 top_guess包含"狼"
+            const isWolf = campInfo.camp_prediction === 'wolf' || 
+                          (campInfo.top_guess && campInfo.top_guess.includes('狼'));
+            // 神职判断：top_guess在神职列表中
+            const isGod = GOD_ROLES.includes(campInfo.top_guess);
+            
+            if (isWolf) {
                 campClass = 'camp-wolf';
-            } else if (GOD_ROLES.includes(campInfo.top_guess)) {
+            } else if (isGod) {
                 campClass = 'camp-god';
             } else if (campInfo.camp_prediction === 'good') {
                 campClass = 'camp-good';
