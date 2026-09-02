@@ -964,15 +964,19 @@ def get_wolf_pit_analysis(game_id: int, total_wolves: int = 4, db: Session = Dep
         if not game:
             raise HTTPException(status_code=404, detail="对局不存在")
         
-        # 如果对局有版型，从版型获取狼人数
+        # 如果对局有版型，从版型获取狼人阵营的总数量
         if game.setup_id:
-            setup_identities = db.query(SetupIdentity).filter(
-                SetupIdentity.setup_id == game.setup_id
-            ).all()
-            for si in setup_identities:
-                if si.identity and "狼" in si.identity.name and "美人" not in si.identity.name:
-                    total_wolves = si.count
-                    break
+            # 找到狼人阵营
+            wolf_faction = db.query(Faction).filter(Faction.name.contains("狼")).first()
+            if wolf_faction:
+                setup_identities = db.query(SetupIdentity).filter(
+                    SetupIdentity.setup_id == game.setup_id
+                ).all()
+                # 统计所有属于狼人阵营的身份数量
+                total_wolves = 0
+                for si in setup_identities:
+                    if si.identity and si.identity.faction_id == wolf_faction.id:
+                        total_wolves += si.count
         
         # 调用狼坑分析
         result = analyze_wolf_pits(db, game_id, total_wolves)
