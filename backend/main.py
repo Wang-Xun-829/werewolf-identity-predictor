@@ -610,10 +610,13 @@ def list_game_actions(game_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/actions", response_model=ActionOut)
 def create_action(action: ActionCreate, db: Session = Depends(get_db)):
+    from prediction_cache import invalidate_cache
     db_action = Action(**action.dict())
     db.add(db_action)
     db.commit()
     db.refresh(db_action)
+    # 使预测缓存失效
+    invalidate_cache(action.game_id)
     return db_action
 
 
@@ -706,6 +709,9 @@ def create_actions_batch(actions: ActionBatchCreate, db: Session = Depends(get_d
     db.commit()
     for action in result:
         db.refresh(action)
+    # 使预测缓存失效
+    from prediction_cache import invalidate_cache
+    invalidate_cache(actions.game_id)
     return result
 
 
@@ -714,10 +720,14 @@ def update_action(action_id: int, action: ActionUpdate, db: Session = Depends(ge
     db_action = db.query(Action).filter(Action.id == action_id).first()
     if not db_action:
         raise HTTPException(status_code=404, detail="行为记录不存在")
+    game_id = db_action.game_id
     for key, value in action.dict(exclude_unset=True).items():
         setattr(db_action, key, value)
     db.commit()
     db.refresh(db_action)
+    # 使预测缓存失效
+    from prediction_cache import invalidate_cache
+    invalidate_cache(game_id)
     return db_action
 
 
@@ -726,8 +736,12 @@ def delete_action(action_id: int, db: Session = Depends(get_db)):
     db_action = db.query(Action).filter(Action.id == action_id).first()
     if not db_action:
         raise HTTPException(status_code=404, detail="行为记录不存在")
+    game_id = db_action.game_id
     db.delete(db_action)
     db.commit()
+    # 使预测缓存失效
+    from prediction_cache import invalidate_cache
+    invalidate_cache(game_id)
     return {"success": True, "message": "行为记录已删除"}
 
 
@@ -735,7 +749,14 @@ def delete_action(action_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/games/{game_id}/predictions")
 def get_predictions(game_id: int, db: Session = Depends(get_db)):
-    """获取对局的身份预测结果（贝叶斯推理 + 综合逻辑调整）"""
+    """获取对局的身份预测结果（贝叶斯推理 + 综合逻辑调整，带缓存）"""
+    from prediction_cache import get_cached_predictions, set_cached_predictions
+    
+    # 先检查缓存
+    cached = get_cached_predictions(game_id)
+    if cached is not None:
+        return cached
+    
     from inference import predict_game_identities
     from logic_engine_v2 import ComprehensiveLogicEngine
     
@@ -806,7 +827,12 @@ def get_predictions(game_id: int, db: Session = Depends(get_db)):
         import traceback
         print("应用逻辑调整时出错:", traceback.format_exc())
     
-    return {"game_id": game_id, "predictions": predictions}
+    result = {"game_id": game_id, "predictions": predictions}
+    
+    # 存入缓存
+    set_cached_predictions(game_id, result)
+    
+    return result
 
 
 # ==================== 确认身份 ====================
@@ -825,10 +851,13 @@ def list_confirmed_identities(game_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/games/{game_id}/confirmed_identities", response_model=ConfirmedIdentityOut)
 def create_confirmed_identity(ci: ConfirmedIdentityCreate, db: Session = Depends(get_db)):
+    from prediction_cache import invalidate_cache
     db_ci = ConfirmedIdentity(**ci.dict())
     db.add(db_ci)
     db.commit()
     db.refresh(db_ci)
+    # 使预测缓存失效
+    invalidate_cache(ci.game_id)
     return db_ci
 
 
@@ -837,8 +866,12 @@ def delete_confirmed_identity(ci_id: int, db: Session = Depends(get_db)):
     db_ci = db.query(ConfirmedIdentity).filter(ConfirmedIdentity.id == ci_id).first()
     if not db_ci:
         raise HTTPException(status_code=404, detail="确认身份不存在")
+    game_id = db_ci.game_id
     db.delete(db_ci)
     db.commit()
+    # 使预测缓存失效
+    from prediction_cache import invalidate_cache
+    invalidate_cache(game_id)
     return {"success": True, "message": "确认身份已删除"}
 
 
