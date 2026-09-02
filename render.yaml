@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: werewolf-identity-predictor
+    env: python
+    plan: free
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && gunicorn main:app -w 2 -k uvicorn.workers.UvicornWorker"
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.9

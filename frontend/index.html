@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>狼人杀身份预测系统 v5.0</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 顶部导航 -->
+        <nav class="navbar">
+            <div class="navbar-brand">
+                <span class="logo-mark">W</span>
+                <span class="title">狼人杀身份预测系统</span>
+                <span class="version">v5.0</span>
+            </div>
+            <div class="navbar-nav">
+                <div class="nav-item active" data-page="games" onclick="switchPage('games')">
+                    <span>对局管理</span>
+                </div>
+                <div class="nav-item" data-page="players" onclick="switchPage('players')">
+                    <span>玩家管理</span>
+                </div>
+                <div class="nav-item" data-page="identities" onclick="switchPage('identities')">
+                    <span>身份库</span>
+                </div>
+                <div class="nav-item" data-page="actions" onclick="switchPage('actions')">
+                    <span>行为库</span>
+                </div>
+                <div class="nav-item" data-page="setups" onclick="switchPage('setups')">
+                    <span>版型库</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 对局管理页面 -->
+            <!-- 对局管理页面 -->
+            <div id="page-games" class="page active">
+                <div class="page-body" style="padding-top: 40px;">
+                    <div id="games-list" class="table-container"></div>
+                </div>
+            </div>
+
+            <!-- 玩家管理页面 -->
+            <div id="page-players" class="page">
+                <div class="page-body" style="padding-top: 40px;">
+                    <div class="search-bar" style="width: 70%; margin: 0 auto 16px auto;">
+                        <input type="text" id="player-search" placeholder="搜索玩家（支持拼音/拼音首字母/汉字）..." oninput="searchPlayers()">
+                    </div>
+                    <div id="players-list" class="table-container"></div>
+                </div>
+            </div>
+
+            <!-- 身份库页面 -->
+            <div id="page-identities" class="page">
+                <div class="page-body" style="padding-top: 40px;">
+                    <div id="identities-list" class="table-container"></div>
+                </div>
+            </div>
+
+            <!-- 行为库页面 -->
+            <div id="page-actions" class="page">
+                <div class="page-body" style="padding-top: 40px;">
+                    <div id="actions-list" class="table-container"></div>
+                </div>
+            </div>
+
+            <!-- 版型库页面 -->
+            <div id="page-setups" class="page">
+                <div class="page-body" style="padding-top: 40px;">
+                    <div id="setups-list" class="table-container"></div>
+                </div>
+            </div>
+
+            <!-- 对局详情页面 -->
+            <div id="page-game-detail" class="page">
+                <div class="game-detail-header">
+                    <div class="header-left">
+                        <button class="btn btn-secondary btn-back" onclick="backToGames()">← 返回</button>
+                        <h2 id="game-detail-title" class="game-detail-title">对局详情</h2>
+                    </div>
+                    <div class="game-info-bar">
+                        <div class="game-info-item">
+                            <span class="info-label">当前阶段:</span>
+                            <span class="flow-phase-badge" id="current-phase">未开始</span>
+                        </div>
+                        <div class="game-info-item">
+                            <span class="info-label">轮次:</span>
+                            <span class="flow-round-badge" id="current-round">第1轮</span>
+                        </div>
+                        <button class="btn btn-small btn-primary" onclick="advancePhase()">进入下一阶段</button>
+                        <button class="btn btn-small btn-danger" onclick="showWolfExplodeModal()">狼人自爆</button>
+                    </div>
+                </div>
+
+                <div class="game-detail-layout">
+                    <!-- 左侧：玩家列表 -->
+                    <div class="game-panel game-players-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">玩家列表</h3>
+                            <button class="btn btn-small btn-primary" onclick="showAddPlayerModal()">+ 添加</button>
+                        </div>
+                        <div id="game-players-list" class="player-list"></div>
+                    </div>
+
+                    <!-- 中间：主内容区 -->
+                    <div class="game-panel game-main-panel">
+                        <!-- 行为录入区 -->
+                        <div class="action-input-panel">
+                            <div class="panel-header">
+                                <h3 class="panel-title">行为录入</h3>
+                            </div>
+                            <div class="action-form-grid">
+                                <div class="form-group">
+                                    <label>行为发起者</label>
+                                    <select id="action-player"></select>
+                                </div>
+                                <div class="form-group">
+                                    <label>行为目标（可选）</label>
+                                    <select id="action-target">
+                                        <option value="">无</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>具体行为（可多选）</label>
+                                <div class="action-tree-container" id="action-tree"></div>
+                            </div>
+                            <div class="action-form-grid">
+                                <div class="form-group">
+                                    <label>声明身份（可选）</label>
+                                    <select id="action-declared-identity">
+                                        <option value="">无</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>备注（可选）</label>
+                                    <input type="text" id="action-notes" placeholder="备注...">
+                                </div>
+                            </div>
+                            <div class="action-form-actions">
+                                <button class="btn btn-secondary" onclick="clearActionForm()">清空</button>
+                                <button class="btn btn-primary" onclick="submitActions()">录入行为并刷新预测</button>
+                            </div>
+                        </div>
+
+                        <!-- 行为记录区 -->
+                        <div class="behavior-records-panel">
+                            <div class="panel-header">
+                                <h3 class="panel-title">行为记录</h3>
+                                <button class="btn btn-small btn-secondary" onclick="updateResultStatus()">更新结果状态</button>
+                            </div>
+                            <div id="behavior-records-list" class="behavior-records-list"></div>
+                        </div>
+                    </div>
+
+                    <!-- 右侧：预测结果 -->
+                    <div class="game-panel prediction-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">身份预测</h3>
+                            <button class="btn btn-small btn-secondary" onclick="refreshPredictions()">刷新</button>
+                        </div>
+                        <div id="prediction-result" class="prediction-result">
+                            <p class="empty-text">点击左侧玩家查看预测结果</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 高级分析 -->
+                <div class="advanced-analysis">
+                    <div class="panel-header">
+                        <h3 class="panel-title">高级分析</h3>
+                    </div>
+                    <div class="analysis-tabs">
+                        <button class="tab-btn active" data-tab="prophet">预言家查验链</button>
+                        <button class="tab-btn" data-tab="wolfpit">狼坑分析</button>
+                        <button class="tab-btn" data-tab="confirmed">确认身份</button>
+                    </div>
+                    <div id="analysis-content" class="analysis-content"></div>
+                </div>
+
+                <!-- 对局确认 -->
+                <div class="game-confirm-section">
+                    <button class="btn btn-success btn-full" onclick="confirmGame()">确认对局结束（输入真实身份并触发学习）</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 模态框容器 -->
+    <div id="modal-container"></div>
+
+    <!-- Toast容器 -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/game.js"></script>
+    <script>
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initNavigation();
+            loadGames();
+        });
+    </script>
+</body>
+</html>
