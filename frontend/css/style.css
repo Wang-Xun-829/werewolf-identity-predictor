@@ -1070,14 +1070,12 @@ body::after {
 }
 
 .action-item.level-2 {
-    width: 100%;
-    margin-left: 20px;
+    width: calc(50% - 4px);
     margin-bottom: 3px;
 }
 
 .action-item.level-3 {
-    width: 100%;
-    margin-left: 40px;
+    width: calc(50% - 4px);
     margin-bottom: 2px;
 }
 
@@ -1139,11 +1137,14 @@ body::after {
     transform: rotate(90deg);
 }
 
-/* 子行为容器 */
+/* 子行为容器 - 横向排列 */
 .action-children {
     margin-top: 5px;
     padding-left: 8px;
     border-left: 1px solid rgba(0, 212, 255, 0.12);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
     animation: slideDown 0.2s ease;
 }
 

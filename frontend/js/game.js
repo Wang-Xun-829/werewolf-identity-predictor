@@ -377,10 +377,9 @@ function renderActionTag(action, level) {
     
     let html = `
         <div class="action-item level-${level}">
-            <span class="action-tag ${isSelected ? 'selected' : ''} ${hasChildren ? 'has-children' : ''}"
-                  onclick="handleActionClick(${action.id}, ${hasChildren})">
-                ${hasChildren ? `<span class="action-arrow ${isExpanded ? 'expanded' : ''}">▶</span>` : ''}
-                ${action.name}
+            <span class="action-tag ${isSelected ? 'selected' : ''} ${hasChildren ? 'has-children' : ''}">
+                ${hasChildren ? `<span class="action-arrow ${isExpanded ? 'expanded' : ''}" onclick="toggleActionExpand(${action.id}, event)">▶</span>` : ''}
+                <span class="action-name" onclick="toggleActionSelect(${action.id}, event)">${action.name}</span>
             </span>
     `;
     
@@ -397,18 +396,23 @@ function renderActionTag(action, level) {
     return html;
 }
 
-// 处理行为点击
-function handleActionClick(actionId, hasChildren) {
-    // 如果有子行为，切换展开状态
-    if (hasChildren) {
-        if (expandedActionIds.has(actionId)) {
-            expandedActionIds.delete(actionId);
-        } else {
-            expandedActionIds.add(actionId);
-        }
+// 切换行为展开/折叠（点击箭头时调用）
+function toggleActionExpand(actionId, event) {
+    event.stopPropagation(); // 阻止事件冒泡，避免触发选中
+    
+    if (expandedActionIds.has(actionId)) {
+        expandedActionIds.delete(actionId);
+    } else {
+        expandedActionIds.add(actionId);
     }
     
-    // 切换选中状态
+    loadActionTree();
+}
+
+// 切换行为选中状态（点击行为名称时调用）
+function toggleActionSelect(actionId, event) {
+    event.stopPropagation(); // 阻止事件冒泡
+    
     const index = selectedActionIds.indexOf(actionId);
     if (index > -1) {
         selectedActionIds.splice(index, 1);
@@ -454,6 +458,13 @@ async function submitActions() {
         await loadActionTree();
         await loadBehaviorRecords();
         await refreshPredictions();
+        
+        // 保持行为发出者不变
+        document.getElementById('action-player').value = playerId;
+        // 同时保持行为目标不变（如果有的话）
+        if (targetId) {
+            document.getElementById('action-target').value = targetId;
+        }
     } else {
         showToast('录入失败', 'error');
     }
@@ -656,6 +667,18 @@ async function advancePhase() {
         document.getElementById('current-phase').textContent = result.phase;
         document.getElementById('current-round').textContent = `第${result.round}轮`;
         showToast('已进入下一阶段');
+        
+        // 如果进入警上发言阶段，自动弹出选择上警玩家的弹窗
+        if (result.phase === '警上发言') {
+            // 延迟一下，确保玩家列表已更新
+            setTimeout(() => {
+                // 检查是否已经有玩家上警
+                const hasPolice = document.querySelector('.dot-police') !== null;
+                if (!hasPolice) {
+                    showPoliceSelectModal();
+                }
+            }, 500);
+        }
     } else {
         showToast('操作失败', 'error');
     }
@@ -869,7 +892,6 @@ async function confirmAddPlayers() {
         showToast(`添加失败${failCount}名玩家`, 'error');
     }
     await loadGamePlayers();
-    updatePlayerSelects();
 }
 
 // 确认对局

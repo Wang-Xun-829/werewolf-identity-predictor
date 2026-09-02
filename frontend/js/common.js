@@ -165,7 +165,7 @@ function showCreateGameModal() {
         </div>
         <div class="form-group">
             <label>选择版型</label>
-            <select id="new-game-setup">
+            <select id="new-game-setup" onchange="autoFillPlayerCount()">
                 <option value="">不指定版型</option>
                 ${setupOptions}
             </select>
@@ -178,6 +178,17 @@ function showCreateGameModal() {
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
         <button class="btn btn-primary" onclick="createGame()">创建</button>
     `);
+}
+
+// 选择版型时自动填充玩家人数
+function autoFillPlayerCount() {
+    const setupId = document.getElementById('new-game-setup').value;
+    if (setupId) {
+        const setup = allSetups.find(s => s.id === parseInt(setupId));
+        if (setup) {
+            document.getElementById('new-game-count').value = setup.player_count;
+        }
+    }
 }
 
 async function createGame() {
