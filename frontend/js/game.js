@@ -631,7 +631,7 @@ function showAddPlayerModal() {
                 ${availablePlayers.map(p => `
                     <div class="add-player-item" data-player-id="${p.id}" data-player-name="${p.name}" style="display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(0,212,255,0.06);">
                         <input type="checkbox" id="add-player-${p.id}" class="add-player-checkbox" style="width: 16px; height: 16px; cursor: pointer;">
-                        <label for="add-player-${p.id}" style="flex: 1; cursor: pointer; font-size: 13px; color: var(--text-primary);">${p.name}</label>
+                        <label for="add-player-${p.id}" class="add-player-name" style="flex: 1; cursor: pointer; font-size: 13px; color: var(--text-primary);">${p.name}</label>
                         <input type="number" id="add-seat-${p.id}" placeholder="座位号" style="width: 80px; padding: 5px 8px; border: 1px solid rgba(0,212,255,0.2); border-radius: 3px; background: transparent; color: var(--text-primary); font-size: 12px;">
                     </div>
                 `).join('')}
@@ -655,10 +655,12 @@ function showAddPlayerModal() {
 
 // 搜索过滤玩家
 function filterPlayersForAdd() {
-    const keyword = document.getElementById('player-search').value.toLowerCase();
+    const keyword = document.getElementById('player-search').value.trim().toLowerCase();
     document.querySelectorAll('.add-player-item').forEach(item => {
-        const name = item.getAttribute('data-player-name').toLowerCase();
-        if (name.includes(keyword)) {
+        // 从玩家名称标签获取文本，而不是从data属性（避免特殊字符问题）
+        const nameEl = item.querySelector('.add-player-name');
+        const name = nameEl ? nameEl.textContent.trim().toLowerCase() : '';
+        if (!keyword || name.includes(keyword)) {
             item.style.display = 'flex';
         } else {
             item.style.display = 'none';
