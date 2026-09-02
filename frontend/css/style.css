@@ -1543,7 +1543,7 @@ body::after {
     border: 1px solid transparent;
     background: rgba(139, 92, 246, 0.03);
     position: relative;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .player-item::before {
@@ -1574,28 +1574,33 @@ body::after {
 
 .player-item.active::before { opacity: 1; }
 
-/* 玩家项操作按钮 */
-.player-item {
+/* 玩家项操作按钮 - 绝对定位在条目内部右侧，不占布局空间 */
+.player-actions-col {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.player-item-actions {
-    display: flex;
-    gap: 6px;
+    flex-direction: column;
+    gap: 4px;
+    width: 36px;
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
     opacity: 0;
     transition: opacity 0.15s ease;
-    flex-shrink: 0;
+    z-index: 10;
+    background: rgba(10, 15, 30, 0.85);
+    backdrop-filter: blur(4px);
+    padding: 6px 4px;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 212, 255, 0.2);
 }
 
-.player-item:hover .player-item-actions {
+.player-item:hover .player-actions-col {
     opacity: 1;
 }
 
-.player-action-btn {
-    width: 26px;
-    height: 26px;
+.player-actions-col .player-action-btn {
+    width: 28px;
+    height: 28px;
     border-radius: 4px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(255, 255, 255, 0.03);
@@ -1610,22 +1615,116 @@ body::after {
     line-height: 1;
 }
 
-.player-action-btn:hover {
+.player-actions-col .player-action-btn:hover {
+    background: rgba(0, 212, 255, 0.15);
+    border-color: rgba(0, 212, 255, 0.4);
+    color: #00d4ff;
     transform: scale(1.1);
 }
 
-.player-action-btn.btn-edit:hover {
-    background: rgba(0, 212, 255, 0.15);
-    border-color: rgba(0, 212, 255, 0.5);
-    color: var(--accent-cyan);
-    box-shadow: 0 0 8px rgba(0, 212, 255, 0.2);
+.player-actions-col .player-action-btn.btn-remove:hover {
+    background: rgba(239, 83, 80, 0.15);
+    border-color: rgba(239, 83, 80, 0.4);
+    color: #ef5350;
 }
 
-.player-action-btn.btn-delete:hover {
-    background: rgba(255, 68, 102, 0.15);
-    border-color: rgba(255, 68, 102, 0.5);
-    color: var(--accent-danger);
-    box-shadow: 0 0 8px rgba(255, 68, 102, 0.2);
+/* 座位号方框 */
+.player-seat-box {
+    width: 32px;
+    height: 32px;
+    border: 2px solid rgba(0, 212, 255, 0.4);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: #00d4ff;
+    background: rgba(0, 212, 255, 0.08);
+    flex-shrink: 0;
+    text-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
+}
+
+.player-seat-box.sheriff-seat {
+    border-color: #ffca28;
+    color: #ffca28;
+    background: rgba(255, 202, 40, 0.1);
+    box-shadow: 0 0 12px rgba(255, 202, 40, 0.4);
+    font-size: 16px;
+}
+
+/* 玩家名称 - 调小字号确保长名字显示 */
+.player-name-main {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    letter-spacing: 0.2px;
+    padding-right: 40px;
+}
+
+/* 玩家状态圆点 - 带文字的小圆圈 */
+.player-status-dots {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 24px;
+    flex-shrink: 0;
+    align-items: center;
+}
+
+.status-dot-text {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    cursor: help;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.dot-police {
+    background: rgba(233, 30, 99, 0.2);
+    color: #e91e63;
+    border: 1.5px solid #e91e63;
+    box-shadow: 0 0 6px rgba(233, 30, 99, 0.4);
+}
+
+.dot-civilian {
+    background: rgba(66, 165, 245, 0.2);
+    color: #42a5f5;
+    border: 1.5px solid #42a5f5;
+    box-shadow: 0 0 6px rgba(66, 165, 245, 0.4);
+}
+
+.dot-retired {
+    background: rgba(239, 83, 80, 0.2);
+    color: #ef5350;
+    border: 1.5px solid #ef5350;
+    box-shadow: 0 0 6px rgba(239, 83, 80, 0.4);
+}
+
+.dot-alive-small {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+    border: 1.5px solid #4caf50;
+    box-shadow: 0 0 6px rgba(76, 175, 80, 0.4);
+}
+
+.dot-dead-small {
+    background: rgba(158, 158, 158, 0.2);
+    color: #9e9e9e;
+    border: 1.5px solid #9e9e9e;
+    box-shadow: 0 0 6px rgba(158, 158, 158, 0.3);
+}
 }
 
 /* 阵营颜色 - 玩家条目整个背景填充 */
@@ -1993,29 +2092,18 @@ body::after {
     text-shadow: 0 0 6px rgba(0, 212, 255, 0.4);
 }
 
-/* 座位号 - 显示在最前面 */
-.player-seat-number {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 28px;
-    height: 28px;
-    padding: 0 6px;
-    background: linear-gradient(180deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 212, 255, 0.1) 100%);
-    border: 1px solid rgba(0, 212, 255, 0.4);
-    border-radius: 4px;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--accent-cyan);
-    font-family: 'Courier New', monospace;
-    text-shadow: 0 0 6px rgba(0, 212, 255, 0.4);
-    box-shadow: 0 0 8px rgba(0, 212, 255, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+/* 警告按钮样式 */
+.btn-warning {
+    background: linear-gradient(135deg, #ff9800, #f57c00);
+    color: #fff;
+    border: 1px solid rgba(255, 152, 0, 0.5);
+    box-shadow: 0 0 8px rgba(255, 152, 0, 0.3);
 }
 
-.player-name {
-    font-weight: 700;
-    font-size: 14px;
-    color: var(--text-primary);
+.btn-warning:hover {
+    background: linear-gradient(135deg, #ffa726, #ff9800);
+    box-shadow: 0 0 12px rgba(255, 152, 0, 0.5);
+    transform: translateY(-1px);
 }
 
 .action-form-grid {

@@ -90,6 +90,8 @@ const GameFlowAPI = {
     wolfExplode: (gameId, playerId) => apiRequest(`/games/${gameId}/wolf_explode?player_id=${playerId}`, 'POST'),
     initPhase: (gameId) => apiRequest(`/games/${gameId}/phase/init`, 'POST'),
     updateStatus: (gameId, playerId, data) => apiRequest(`/games/${gameId}/players/${playerId}/status`, 'PUT', data),
+    selectPolicePlayers: (gameId, playerIds) => apiRequest(`/games/${gameId}/police/select`, 'POST', { player_ids: playerIds }),
+    setSheriff: (gameId, playerId) => apiRequest(`/games/${gameId}/sheriff/set`, 'POST', { player_id: playerId }),
     getEligibleVoters: (gameId, voteType) => apiRequest(`/games/${gameId}/eligible_voters?vote_type=${voteType}`),
     getVoteResult: (gameId, voteType) => apiRequest(`/games/${gameId}/vote_result?vote_type=${voteType}`),
 };

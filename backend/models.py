@@ -245,6 +245,7 @@ class PlayerStatus(Base):
     is_on_police = Column(Boolean, default=False, comment="是否上警")
     is_retired = Column(Boolean, default=False, comment="是否退水")
     is_alive = Column(Boolean, default=True, comment="是否存活")
+    is_sheriff = Column(Boolean, default=False, comment="是否是警长")
     death_type = Column(String(20), nullable=True, comment="死亡类型：night/vote/self_explode")
     death_round = Column(Integer, nullable=True, comment="死亡轮次")
     

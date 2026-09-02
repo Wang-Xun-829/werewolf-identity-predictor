@@ -359,6 +359,12 @@ def get_game(game_id: int, db: Session = Depends(get_db)):
     
     # 添加玩家列表
     for gp in game.game_players:
+        # 获取玩家状态
+        player_status = db.query(PlayerStatus).filter(
+            PlayerStatus.game_id == game_id,
+            PlayerStatus.player_id == gp.player_id
+        ).first()
+        
         player_data = {
             "id": gp.id,
             "game_id": gp.game_id,
@@ -366,7 +372,11 @@ def get_game(game_id: int, db: Session = Depends(get_db)):
             "player_name": gp.player.name if gp.player else None,
             "seat_number": gp.seat_number,
             "actual_identity_id": gp.actual_identity_id,
-            "actual_identity_name": gp.actual_identity.name if gp.actual_identity else None
+            "actual_identity_name": gp.actual_identity.name if gp.actual_identity else None,
+            "is_on_police": player_status.is_on_police if player_status else False,
+            "is_retired": player_status.is_retired if player_status else False,
+            "is_alive": player_status.is_alive if player_status else True,
+            "is_sheriff": player_status.is_sheriff if player_status else False
         }
         result["players"].append(player_data)
     
@@ -467,6 +477,116 @@ def remove_game_player(game_id: int, player_id: int, db: Session = Depends(get_d
     db.delete(db_player)
     db.commit()
     return {"success": True, "message": "玩家已从对局中移除"}
+
+
+@app.put("/api/games/{game_id}/players/{player_id}/status")
+def update_player_status(game_id: int, player_id: int, status_data: dict, db: Session = Depends(get_db)):
+    """更新玩家状态（上警、退水、存活等）"""
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="对局不存在")
+    
+    # 检查玩家是否在对局中
+    game_player = db.query(GamePlayer).filter(
+        GamePlayer.game_id == game_id,
+        GamePlayer.player_id == player_id
+    ).first()
+    if not game_player:
+        raise HTTPException(status_code=404, detail="玩家不在对局中")
+    
+    # 获取或创建玩家状态
+    status = db.query(PlayerStatus).filter(
+        PlayerStatus.game_id == game_id,
+        PlayerStatus.player_id == player_id
+    ).first()
+    if not status:
+        status = PlayerStatus(game_id=game_id, player_id=player_id)
+        db.add(status)
+        db.flush()
+    
+    # 更新状态字段
+    if "is_on_police" in status_data:
+        status.is_on_police = status_data["is_on_police"]
+    if "is_retired" in status_data:
+        status.is_retired = status_data["is_retired"]
+    if "is_alive" in status_data:
+        status.is_alive = status_data["is_alive"]
+    
+    db.commit()
+    db.refresh(status)
+    
+    return {
+        "success": True,
+        "player_id": player_id,
+        "is_on_police": status.is_on_police,
+        "is_retired": status.is_retired,
+        "is_alive": status.is_alive
+    }
+
+
+@app.post("/api/games/{game_id}/police/select")
+def select_police_players(game_id: int, police_data: dict, db: Session = Depends(get_db)):
+    """警上发言环节：选择上警的玩家"""
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="对局不存在")
+    
+    player_ids = police_data.get("player_ids", [])
+    
+    # 先重置所有玩家的上警状态
+    db.query(PlayerStatus).filter(
+        PlayerStatus.game_id == game_id
+    ).update({PlayerStatus.is_on_police: False, PlayerStatus.is_retired: False})
+    
+    # 设置选中玩家的上警状态
+    for pid in player_ids:
+        status = db.query(PlayerStatus).filter(
+            PlayerStatus.game_id == game_id,
+            PlayerStatus.player_id == pid
+        ).first()
+        if not status:
+            status = PlayerStatus(game_id=game_id, player_id=pid, is_on_police=True)
+            db.add(status)
+        else:
+            status.is_on_police = True
+    
+    # 更新游戏阶段为警上发言
+    game.current_phase = "警上发言"
+    db.commit()
+    
+    return {"success": True, "phase": game.current_phase, "police_players": player_ids}
+
+
+@app.post("/api/games/{game_id}/sheriff/set")
+def set_sheriff(game_id: int, sheriff_data: dict, db: Session = Depends(get_db)):
+    """设置警长（竞选警长环节结束后，警徽票最多的玩家获得警徽）"""
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="对局不存在")
+    
+    sheriff_id = sheriff_data.get("player_id")
+    if not sheriff_id:
+        raise HTTPException(status_code=400, detail="请指定警长玩家")
+    
+    # 先重置所有玩家的警长状态
+    db.query(PlayerStatus).filter(
+        PlayerStatus.game_id == game_id
+    ).update({PlayerStatus.is_sheriff: False})
+    
+    # 设置指定玩家为警长
+    status = db.query(PlayerStatus).filter(
+        PlayerStatus.game_id == game_id,
+        PlayerStatus.player_id == sheriff_id
+    ).first()
+    if not status:
+        status = PlayerStatus(game_id=game_id, player_id=sheriff_id, is_sheriff=True)
+        db.add(status)
+    else:
+        status.is_sheriff = True
+    
+    db.commit()
+    
+    return {"success": True, "sheriff_id": sheriff_id, "message": "警长已设置"}
 
 
 # ==================== 行为记录 ====================

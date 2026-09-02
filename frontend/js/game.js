@@ -130,18 +130,47 @@ async function loadGamePlayers() {
                 campClass = 'camp-good';
             }
         }
+        
+        // 状态 - 带文字的小圆圈
+        let policeClass, policeText, policeTitle;
+        if (p.is_on_police && !p.is_retired) {
+            policeClass = 'dot-police';
+            policeText = '警';
+            policeTitle = '上警';
+        } else if (p.is_on_police && p.is_retired) {
+            policeClass = 'dot-retired';
+            policeText = '退';
+            policeTitle = '退水';
+        } else {
+            policeClass = 'dot-civilian';
+            policeText = '投';
+            policeTitle = '警下（有投票权）';
+        }
+        
+        const aliveClass = p.is_alive ? 'dot-alive-small' : 'dot-dead-small';
+        const aliveText = p.is_alive ? '活' : '亡';
+        const aliveTitle = p.is_alive ? '存活' : '出局';
+        
+        // 警长标记
+        const isSheriff = p.is_sheriff || false;
+        const seatDisplay = isSheriff ? '👑' : (p.seat_number ? p.seat_number : '-');
+        
         return `
         <div class="player-item ${currentPlayerId === p.player_id ? 'selected' : ''} ${campClass}" 
              data-player-id="${p.player_id}"
              onclick="selectPlayer(${p.player_id})">
-            <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
-                <span class="player-seat-number">${p.seat_number ? p.seat_number : '-'}</span>
-                <span class="player-status-dot dot-alive"></span>
-                <span class="player-name">${p.player_name || '未知玩家'}</span>
+            <div class="player-seat-box ${isSheriff ? 'sheriff-seat' : ''}">
+                ${seatDisplay}
             </div>
-            <div class="player-item-actions" onclick="event.stopPropagation()">
-                <button class="player-action-btn btn-edit" onclick="showEditSeatModal(${p.player_id}, ${p.seat_number || 'null'})" title="修改座位号">✎</button>
-                <button class="player-action-btn btn-delete" onclick="removePlayerFromGame(${p.player_id})" title="从本局移除">✕</button>
+            <div class="player-name-main">${p.player_name || '未知玩家'}</div>
+            <div class="player-status-dots">
+                <span class="status-dot-text ${policeClass}" title="${policeTitle}">${policeText}</span>
+                <span class="status-dot-text ${aliveClass}" title="${aliveTitle}">${aliveText}</span>
+            </div>
+            <div class="player-actions-col player-actions-outside" onclick="event.stopPropagation()">
+                <button class="player-action-btn" onclick="showEditPlayerStatusModal(${p.player_id}, ${p.is_on_police || 'false'}, ${p.is_retired || 'false'}, ${p.is_alive || 'false'})" title="设置状态">⚙</button>
+                <button class="player-action-btn" onclick="showEditSeatModal(${p.player_id}, ${p.seat_number || 'null'})" title="编辑座位">✎</button>
+                <button class="player-action-btn btn-remove" onclick="removePlayerFromGame(${p.player_id})" title="移除玩家">✕</button>
             </div>
         </div>
     `}).join('');
@@ -241,6 +270,67 @@ async function confirmEditSeat(playerId) {
         const result = await GameAPI.updatePlayer(currentGameId, playerId, { seat_number: seatNumber });
         if (result && !result.detail) {
             showToast('座位号修改成功');
+            closeModal();
+            await loadGamePlayers();
+        } else {
+            showToast(result.detail || '修改失败', 'error');
+        }
+    } catch (error) {
+        showToast('修改失败: ' + error.message, 'error');
+    }
+}
+
+// 显示编辑玩家状态弹窗
+function showEditPlayerStatusModal(playerId, isOnPolice, isRetired, isAlive) {
+    // 获取玩家名字
+    let playerName = '该玩家';
+    if (currentGameData && currentGameData.players) {
+        const player = currentGameData.players.find(p => p.player_id === playerId);
+        if (player) playerName = player.player_name;
+    }
+    
+    showModal(`编辑玩家状态 - ${playerName}`, `
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                <input type="checkbox" id="edit-status-police" ${isOnPolice === true || isOnPolice === 'true' ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer;">
+                <span>上警</span>
+            </label>
+        </div>
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                <input type="checkbox" id="edit-status-retired" ${isRetired === true || isRetired === 'true' ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer;">
+                <span>退水</span>
+            </label>
+        </div>
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                <input type="checkbox" id="edit-status-alive" ${isAlive === true || isAlive === 'true' ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer;">
+                <span>存活</span>
+            </label>
+        </div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">
+            修改玩家的上警、退水和存活状态
+        </div>
+    `, `
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="confirmEditPlayerStatus(${playerId})">确认修改</button>
+    `);
+}
+
+// 确认修改玩家状态
+async function confirmEditPlayerStatus(playerId) {
+    const isOnPolice = document.getElementById('edit-status-police').checked;
+    const isRetired = document.getElementById('edit-status-retired').checked;
+    const isAlive = document.getElementById('edit-status-alive').checked;
+    
+    try {
+        const result = await GameFlowAPI.updateStatus(currentGameId, playerId, {
+            is_on_police: isOnPolice,
+            is_retired: isRetired,
+            is_alive: isAlive
+        });
+        if (result && result.success) {
+            showToast('玩家状态修改成功');
             closeModal();
             await loadGamePlayers();
         } else {
@@ -572,6 +662,76 @@ async function advancePhase() {
 }
 
 // 狼人自爆模态框
+// 显示选择上警玩家弹窗
+function showPoliceSelectModal() {
+    const game = document.getElementById('game-players-list');
+    const players = Array.from(game.querySelectorAll('.player-item')).map(item => {
+        const name = item.querySelector('.player-name').textContent;
+        const id = parseInt(item.getAttribute('data-player-id'));
+        const seat = item.querySelector('.player-seat-number').textContent;
+        const isOnPolice = item.querySelector('.status-police') !== null;
+        return { id, name, seat, isOnPolice };
+    });
+    
+    showModal('警上发言 - 选择上警玩家', `
+        <div class="form-group">
+            <label>勾选上警的玩家（按座位号排序）</label>
+            <div id="police-select-list" style="max-height: 350px; overflow-y: auto; border: 1px solid rgba(0,212,255,0.15); border-radius: 4px; padding: 10px;">
+                ${players.map(p => `
+                    <div class="police-select-item" data-player-id="${p.id}" style="display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(0,212,255,0.06);">
+                        <input type="checkbox" id="police-player-${p.id}" class="police-player-checkbox" ${p.isOnPolice ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer;">
+                        <span style="display: inline-block; width: 30px; height: 24px; line-height: 24px; text-align: center; background: linear-gradient(135deg, rgba(0,212,255,0.2), rgba(0,212,255,0.05)); border: 1px solid rgba(0,212,255,0.3); border-radius: 3px; font-size: 12px; color: #00d4ff; font-weight: 600;">${p.seat}</span>
+                        <label for="police-player-${p.id}" style="flex: 1; cursor: pointer; font-size: 13px; color: var(--text-primary);">${p.name}</label>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">
+            已选 <span id="police-selected-count">0</span> 名玩家上警
+        </div>
+    `, `
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="confirmPoliceSelect()">确认上警名单</button>
+    `);
+    
+    // 监听复选框变化，更新已选数量
+    setTimeout(() => {
+        document.querySelectorAll('.police-player-checkbox').forEach(cb => {
+            cb.addEventListener('change', updatePoliceSelectedCount);
+        });
+        updatePoliceSelectedCount();
+    }, 100);
+}
+
+// 更新已选上警玩家数量
+function updatePoliceSelectedCount() {
+    const count = document.querySelectorAll('.police-player-checkbox:checked').length;
+    const el = document.getElementById('police-selected-count');
+    if (el) el.textContent = count;
+}
+
+// 确认选择上警玩家
+async function confirmPoliceSelect() {
+    const checkedBoxes = document.querySelectorAll('.police-player-checkbox:checked');
+    const playerIds = Array.from(checkedBoxes).map(cb => 
+        parseInt(cb.id.replace('police-player-', ''))
+    );
+    
+    try {
+        const result = await GameFlowAPI.selectPolicePlayers(currentGameId, playerIds);
+        if (result && result.success) {
+            showToast(`已设置${playerIds.length}名玩家上警，进入警上发言阶段`);
+            closeModal();
+            document.getElementById('current-phase').textContent = result.phase || '警上发言';
+            await loadGamePlayers();
+        } else {
+            showToast(result.detail || '操作失败', 'error');
+        }
+    } catch (error) {
+        showToast('操作失败: ' + error.message, 'error');
+    }
+}
+
 function showWolfExplodeModal() {
     const game = document.getElementById('game-players-list');
     showModal('狼人自爆', `
