@@ -689,9 +689,10 @@ async function showConfirmModal() {
         }
     });
     
-    // 生成HTML
+    // 生成HTML（按座位号排序）
     let html = '';
-    gamePlayers.forEach(gp => {
+    const sortedPlayers = [...gamePlayers].sort((a, b) => (a.seat_number || 999) - (b.seat_number || 999));
+    sortedPlayers.forEach(gp => {
         const seat = gp.seat_number ? `${gp.seat_number}号 ` : '';
         html += `<div class="form-group">
             <label>${seat}${escapeHtml(gp.player_name)} 的真实身份</label>
